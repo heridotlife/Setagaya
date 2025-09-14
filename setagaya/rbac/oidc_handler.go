@@ -108,15 +108,20 @@ func (h *OIDCHandler) HandleCallback() httprouter.Handle {
 		// Validate state exists in session
 		ctx := context.Background()
 		sessionID := fmt.Sprintf("state_%s", stateParam)
-		sessionData, err := h.sessionStore.Get(ctx, sessionID)
+		_, err = h.sessionStore.Get(ctx, sessionID)
 		if err != nil {
 			h.logger.Warn("State not found in session", "state", stateParam, "error", err, "ip", r.RemoteAddr)
 			http.Error(w, "Invalid or expired state", http.StatusBadRequest)
 			return
 		}
 
+		// Declare sessionData variable for later use
+		var sessionData map[string]interface{}
+
 		// Clean up state session
-		h.sessionStore.Delete(ctx, sessionID)
+		if err := h.sessionStore.Delete(ctx, sessionID); err != nil {
+			h.logger.Warn("Failed to delete session", "error", err)
+		}
 
 		// Clear state cookie
 		http.SetCookie(w, &http.Cookie{
@@ -312,7 +317,9 @@ func (h *OIDCHandler) HandleUserInfo() httprouter.Handle {
 			"authenticated": true
 		}`, userContext.UserID, userContext.Email, userContext.Name, len(userContext.GlobalRoles))
 		
-		w.Write([]byte(userInfo))
+		if _, err := w.Write([]byte(userInfo)); err != nil {
+			h.logger.Error("Failed to write response", "error", err)
+		}
 	}
 }
 

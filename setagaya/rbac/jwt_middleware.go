@@ -9,6 +9,14 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+// contextKey is a custom type for context keys to avoid collisions
+type contextKey string
+
+const (
+	// UserContextKey is the key for storing user context in request context
+	UserContextKey contextKey = "userContext"
+)
+
 // JWTMiddleware provides JWT-based authentication middleware
 type JWTMiddleware struct {
 	authProvider *OktaAuthProvider
@@ -57,7 +65,7 @@ func (m *JWTMiddleware) RequireAuthentication() httprouter.Handle {
 		userContext := m.authProvider.CreateUserContext(claims)
 
 		// Add user context to request context
-		ctx := context.WithValue(r.Context(), "userContext", userContext)
+		ctx := context.WithValue(r.Context(), UserContextKey, userContext)
 		*r = *r.WithContext(ctx)
 
 		m.logger.Debug("JWT authentication successful", 
@@ -69,7 +77,9 @@ func (m *JWTMiddleware) RequireAuthentication() httprouter.Handle {
 		// For now, we'll just return success
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status": "authenticated", "user": "` + userContext.Email + `"}`))
+		if _, err := w.Write([]byte(`{"status": "authenticated", "user": "` + userContext.Email + `"}`)); err != nil {
+			m.logger.Error("Failed to write response", "error", err)
+		}
 	}
 }
 
@@ -117,7 +127,9 @@ func (m *JWTMiddleware) RequirePermission(resource, action string) httprouter.Ha
 		// Continue to next handler
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status": "authorized", "resource": "` + resource + `", "action": "` + action + `"}`))
+		if _, err := w.Write([]byte(`{"status": "authorized", "resource": "` + resource + `", "action": "` + action + `"}`)); err != nil {
+			m.logger.Error("Failed to write response", "error", err)
+		}
 	}
 }
 
@@ -183,7 +195,9 @@ func (m *JWTMiddleware) RequireTenantPermission(resource, action string) httprou
 		// Continue to next handler
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status": "authorized", "tenantId": "` + tenantIDStr + `"}`))
+		if _, err := w.Write([]byte(`{"status": "authorized", "tenantId": "` + tenantIDStr + `"}`)); err != nil {
+			m.logger.Error("Failed to write response", "error", err)
+		}
 	}
 }
 
