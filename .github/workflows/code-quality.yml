@@ -363,7 +363,7 @@ jobs:
           -exec markdown-link-check '{}' --config .github/markdown-link-check-config.json -q -v \;
 
     - name: Spell check
-      uses: rojopolis/spellcheck-github-actions@0.33.1
+      uses: rojopolis/spellcheck-github-actions@0.52.0
       with:
         config_path: .github/spellcheck-settings.yml
         task_name: Markdown
