@@ -4,6 +4,15 @@ import (
 	"fmt"
 )
 
+// Error codes for RBAC operations
+const (
+	ErrCodeInvalidConfig      = "invalid_config"
+	ErrCodeSessionNotFound    = "session_not_found"
+	ErrCodeSessionExpired     = "session_expired"
+	ErrCodeTokenExchangeFailed = "token_exchange_failed"
+	ErrCodeInvalidToken       = "invalid_token"
+)
+
 // Error types for RBAC operations
 type RBACError struct {
 	Type    string
@@ -13,6 +22,18 @@ type RBACError struct {
 
 func (e *RBACError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Type, e.Message)
+}
+
+// NewRBACError creates a new RBAC error with the specified code and message
+func NewRBACError(code, message string, details map[string]interface{}) *RBACError {
+	if details == nil {
+		details = make(map[string]interface{})
+	}
+	return &RBACError{
+		Type:    code,
+		Message: message,
+		Details: details,
+	}
 }
 
 // Specific error constructors

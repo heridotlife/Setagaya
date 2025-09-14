@@ -2,6 +2,9 @@ package rbac
 
 import (
 	"context"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // RBACEngine defines the core authorization engine interface
@@ -121,6 +124,47 @@ type OktaClaims struct {
 	ServiceProvider   bool     `json:"service_provider"`
 	IssuedAt          int64    `json:"iat"`
 	ExpiresAt         int64    `json:"exp"`
+	Audience          string   `json:"aud"`
+	Issuer            string   `json:"iss"`
+}
+
+// GetExpirationTime implements jwt.Claims interface
+func (c *OktaClaims) GetExpirationTime() (*jwt.NumericDate, error) {
+	if c.ExpiresAt == 0 {
+		return nil, nil
+	}
+	return jwt.NewNumericDate(time.Unix(c.ExpiresAt, 0)), nil
+}
+
+// GetIssuedAt implements jwt.Claims interface
+func (c *OktaClaims) GetIssuedAt() (*jwt.NumericDate, error) {
+	if c.IssuedAt == 0 {
+		return nil, nil
+	}
+	return jwt.NewNumericDate(time.Unix(c.IssuedAt, 0)), nil
+}
+
+// GetNotBefore implements jwt.Claims interface
+func (c *OktaClaims) GetNotBefore() (*jwt.NumericDate, error) {
+	return nil, nil
+}
+
+// GetIssuer implements jwt.Claims interface
+func (c *OktaClaims) GetIssuer() (string, error) {
+	return c.Issuer, nil
+}
+
+// GetSubject implements jwt.Claims interface
+func (c *OktaClaims) GetSubject() (string, error) {
+	return c.Subject, nil
+}
+
+// GetAudience implements jwt.Claims interface
+func (c *OktaClaims) GetAudience() (jwt.ClaimStrings, error) {
+	if c.Audience == "" {
+		return nil, nil
+	}
+	return jwt.ClaimStrings{c.Audience}, nil
 }
 
 // OktaUser represents a user in Okta
