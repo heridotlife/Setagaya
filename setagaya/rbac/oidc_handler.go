@@ -14,11 +14,11 @@ import (
 
 // OIDCHandler handles OIDC authentication flows
 type OIDCHandler struct {
-	authProvider   *OktaAuthProvider
-	rbacEngine     RBACEngine
-	logger         Logger
-	sessionStore   SessionStore
-	baseURL        string
+	authProvider *OktaAuthProvider
+	rbacEngine   RBACEngine
+	logger       Logger
+	sessionStore SessionStore
+	baseURL      string
 }
 
 // NewOIDCHandler creates a new OIDC handler
@@ -212,8 +212,8 @@ func (h *OIDCHandler) HandleCallback() httprouter.Handle {
 			SameSite: http.SameSiteLaxMode,
 		})
 
-		h.logger.Info("OIDC login successful", 
-			"userID", userContext.UserID, 
+		h.logger.Info("OIDC login successful",
+			"userID", userContext.UserID,
 			"email", userContext.Email,
 			"ip", r.RemoteAddr)
 
@@ -252,12 +252,12 @@ func (h *OIDCHandler) HandleLogout() httprouter.Handle {
 			// Construct Okta logout URL
 			logoutURL := fmt.Sprintf("https://%s/oauth2/default/v1/logout", h.authProvider.config.Domain)
 			postLogoutRedirectURI := h.baseURL + "/login"
-			
+
 			logoutParams := url.Values{}
 			logoutParams.Set("post_logout_redirect_uri", postLogoutRedirectURI)
-			
+
 			fullLogoutURL := logoutURL + "?" + logoutParams.Encode()
-			
+
 			h.logger.Info("Redirecting to Okta logout", "url", fullLogoutURL)
 			http.Redirect(w, r, fullLogoutURL, http.StatusFound)
 			return
@@ -307,7 +307,7 @@ func (h *OIDCHandler) HandleUserInfo() httprouter.Handle {
 		// Return user information
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		
+
 		// Simplified user info response
 		userInfo := fmt.Sprintf(`{
 			"user_id": "%s",
@@ -316,7 +316,7 @@ func (h *OIDCHandler) HandleUserInfo() httprouter.Handle {
 			"roles": %d,
 			"authenticated": true
 		}`, userContext.UserID, userContext.Email, userContext.Name, len(userContext.GlobalRoles))
-		
+
 		if _, err := w.Write([]byte(userInfo)); err != nil {
 			h.logger.Error("Failed to write response", "error", err)
 		}

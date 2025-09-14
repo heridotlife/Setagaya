@@ -68,8 +68,8 @@ func (m *JWTMiddleware) RequireAuthentication() httprouter.Handle {
 		ctx := context.WithValue(r.Context(), UserContextKey, userContext)
 		*r = *r.WithContext(ctx)
 
-		m.logger.Debug("JWT authentication successful", 
-			"userID", userContext.UserID, 
+		m.logger.Debug("JWT authentication successful",
+			"userID", userContext.UserID,
 			"email", userContext.Email,
 			"path", r.URL.Path)
 
@@ -103,7 +103,7 @@ func (m *JWTMiddleware) RequirePermission(resource, action string) httprouter.Ha
 		// Check permission
 		hasPermission := m.checkPermission(userContext, resource, action)
 		if !hasPermission {
-			m.logger.Warn("Permission denied", 
+			m.logger.Warn("Permission denied",
 				"userID", userContext.UserID,
 				"resource", resource,
 				"action", action,
@@ -119,7 +119,7 @@ func (m *JWTMiddleware) RequirePermission(resource, action string) httprouter.Ha
 		// Log successful permission check
 		m.logAuditEvent(userContext, resource, action, "GRANTED", r)
 
-		m.logger.Debug("Permission check passed", 
+		m.logger.Debug("Permission check passed",
 			"userID", userContext.UserID,
 			"resource", resource,
 			"action", action)
@@ -156,7 +156,7 @@ func (m *JWTMiddleware) RequireTenantPermission(resource, action string) httprou
 		}
 
 		if tenantIDStr == "" {
-			m.logger.Warn("Tenant ID not provided for tenant-scoped request", 
+			m.logger.Warn("Tenant ID not provided for tenant-scoped request",
 				"userID", userContext.UserID,
 				"path", r.URL.Path)
 			http.Error(w, "Tenant ID required", http.StatusBadRequest)
@@ -170,7 +170,7 @@ func (m *JWTMiddleware) RequireTenantPermission(resource, action string) httprou
 		// Check tenant-specific permission
 		hasPermission := m.checkTenantPermission(userContext, tenantID, resource, action)
 		if !hasPermission {
-			m.logger.Warn("Tenant permission denied", 
+			m.logger.Warn("Tenant permission denied",
 				"userID", userContext.UserID,
 				"tenantID", tenantID,
 				"resource", resource,
@@ -186,7 +186,7 @@ func (m *JWTMiddleware) RequireTenantPermission(resource, action string) httprou
 		// Log successful permission check
 		m.logTenantAuditEvent(userContext, tenantID, resource, action, "GRANTED", r)
 
-		m.logger.Debug("Tenant permission check passed", 
+		m.logger.Debug("Tenant permission check passed",
 			"userID", userContext.UserID,
 			"tenantID", tenantID,
 			"resource", resource,
@@ -298,7 +298,7 @@ func (m *JWTMiddleware) logAuditEvent(userContext *UserContext, resource, action
 	}
 
 	// In a production system, this would be sent to an audit log system
-	m.logger.Info("Audit event", 
+	m.logger.Info("Audit event",
 		"userID", auditEntry.UserID,
 		"action", auditEntry.Action,
 		"resourceType", auditEntry.ResourceType,
@@ -326,7 +326,7 @@ func (m *JWTMiddleware) logTenantAuditEvent(userContext *UserContext, tenantID i
 		},
 	}
 
-	m.logger.Info("Tenant audit event", 
+	m.logger.Info("Tenant audit event",
 		"userID", auditEntry.UserID,
 		"tenantID", tenantID,
 		"action", auditEntry.Action,

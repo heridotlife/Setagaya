@@ -35,10 +35,10 @@ func NewMemorySessionStore(logger Logger) SessionStore {
 		logger:   logger,
 		stopCh:   make(chan struct{}),
 	}
-	
+
 	// Start cleanup goroutine
 	go store.cleanupLoop()
-	
+
 	return store
 }
 
@@ -46,12 +46,12 @@ func NewMemorySessionStore(logger Logger) SessionStore {
 func (s *MemorySessionStore) Set(ctx context.Context, sessionID string, data interface{}, ttl time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.sessions[sessionID] = &sessionEntry{
 		data:      data,
 		expiresAt: time.Now().Add(ttl),
 	}
-	
+
 	s.logger.Debug("Session stored", "sessionID", sessionID, "ttl", ttl)
 	return nil
 }
@@ -60,14 +60,14 @@ func (s *MemorySessionStore) Set(ctx context.Context, sessionID string, data int
 func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interface{}, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	entry, exists := s.sessions[sessionID]
 	if !exists {
 		return nil, NewRBACError(ErrCodeSessionNotFound, "Session not found", map[string]interface{}{
 			"sessionID": sessionID,
 		})
 	}
-	
+
 	// Check expiration
 	if time.Now().After(entry.expiresAt) {
 		s.mu.RUnlock()
@@ -75,12 +75,12 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 		delete(s.sessions, sessionID)
 		s.mu.Unlock()
 		s.mu.RLock()
-		
+
 		return nil, NewRBACError(ErrCodeSessionExpired, "Session expired", map[string]interface{}{
 			"sessionID": sessionID,
 		})
 	}
-	
+
 	s.logger.Debug("Session retrieved", "sessionID", sessionID)
 	return entry.data, nil
 }
@@ -89,7 +89,7 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 func (s *MemorySessionStore) Delete(ctx context.Context, sessionID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	delete(s.sessions, sessionID)
 	s.logger.Debug("Session deleted", "sessionID", sessionID)
 	return nil
@@ -99,21 +99,21 @@ func (s *MemorySessionStore) Delete(ctx context.Context, sessionID string) error
 func (s *MemorySessionStore) Cleanup(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	now := time.Now()
 	expiredCount := 0
-	
+
 	for sessionID, entry := range s.sessions {
 		if now.After(entry.expiresAt) {
 			delete(s.sessions, sessionID)
 			expiredCount++
 		}
 	}
-	
+
 	if expiredCount > 0 {
 		s.logger.Debug("Cleaned up expired sessions", "count", expiredCount)
 	}
-	
+
 	return nil
 }
 
@@ -121,7 +121,7 @@ func (s *MemorySessionStore) Cleanup(ctx context.Context) error {
 func (s *MemorySessionStore) cleanupLoop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ticker.C:

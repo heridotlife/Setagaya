@@ -6,11 +6,11 @@ import (
 
 // Error codes for RBAC operations
 const (
-	ErrCodeInvalidConfig      = "invalid_config"
-	ErrCodeSessionNotFound    = "session_not_found"
-	ErrCodeSessionExpired     = "session_expired"
+	ErrCodeInvalidConfig       = "invalid_config"
+	ErrCodeSessionNotFound     = "session_not_found"
+	ErrCodeSessionExpired      = "session_expired"
 	ErrCodeTokenExchangeFailed = "token_exchange_failed"
-	ErrCodeInvalidToken       = "invalid_token"
+	ErrCodeInvalidToken        = "invalid_token"
 )
 
 // Error types for RBAC operations

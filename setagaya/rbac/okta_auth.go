@@ -15,9 +15,9 @@ import (
 
 // OktaAuthProvider handles Okta authentication and JWT validation
 type OktaAuthProvider struct {
-	config    *OktaConfig
-	logger    Logger
-	publicKey *rsa.PublicKey
+	config       *OktaConfig
+	logger       Logger
+	publicKey    *rsa.PublicKey
 	oauth2Config *oauth2.Config
 }
 
@@ -138,7 +138,7 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 // MapGroupsToRoles maps Okta groups to Setagaya roles
 func (p *OktaAuthProvider) MapGroupsToRoles(groups []string) []Role {
 	var roles []Role
-	
+
 	// Simple mapping for demonstration - in production this would be configurable
 	for _, group := range groups {
 		switch {
@@ -180,10 +180,10 @@ func (p *OktaAuthProvider) MapGroupsToRoles(groups []string) []Role {
 			})
 		case strings.Contains(strings.ToLower(group), "support"):
 			roles = append(roles, Role{
-				ID:          4,
-				Name:        RoleServiceProviderSupport,
-				DisplayName: "Service Support",
-				Description: "Support access across all tenants",
+				ID:           4,
+				Name:         RoleServiceProviderSupport,
+				DisplayName:  "Service Support",
+				Description:  "Support access across all tenants",
 				IsSystemRole: true,
 				Permissions: []Permission{
 					{Resource: "*", Actions: []string{"read"}},
@@ -192,7 +192,7 @@ func (p *OktaAuthProvider) MapGroupsToRoles(groups []string) []Role {
 			})
 		}
 	}
-	
+
 	// Default to viewer if no roles mapped
 	if len(roles) == 0 {
 		roles = append(roles, Role{
@@ -207,7 +207,7 @@ func (p *OktaAuthProvider) MapGroupsToRoles(groups []string) []Role {
 			},
 		})
 	}
-	
+
 	p.logger.Debug("Mapped groups to roles", "groups", groups, "roleCount", len(roles))
 	return roles
 }
