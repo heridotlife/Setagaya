@@ -34,9 +34,9 @@ jobs:
         cache-dependency-path: setagaya/go.sum
 
     - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v7
+      uses: golangci/golangci-lint-action@v8
       with:
-        version: v2.4.0
+        version: latest
         working-directory: setagaya
         skip-cache: true
         args: --enable-only=errcheck,govet,staticcheck,ineffassign,unused --timeout=10m
@@ -387,7 +387,7 @@ jobs:
           -exec markdown-link-check '{}' --config .github/markdown-link-check-config.json -q -v \;
 
     - name: Spell check
-      uses: rojopolis/spellcheck-github-actions@0.33.1
+      uses: rojopolis/spellcheck-github-actions@0.52.0
       with:
         config_path: .github/spellcheck-settings.yml
         task_name: Markdown
