@@ -217,8 +217,7 @@ func (h *OIDCHandler) HandleCallback() httprouter.Handle {
 		}
 
 		// Store user session with security enhancements
-		var sessionData map[string]interface{}
-		sessionData = map[string]interface{}{
+		sessionData := map[string]interface{}{
 			"userContext":  userContext,
 			"accessToken":  token.AccessToken,
 			"refreshToken": token.RefreshToken,
