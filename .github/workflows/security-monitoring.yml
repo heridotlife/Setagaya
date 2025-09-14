@@ -269,7 +269,7 @@ jobs:
         output-file: sbom.spdx.json
 
     - name: Scan SBOM for vulnerabilities
-      uses: anchore/scan-action@v3
+      uses: anchore/scan-action@v6
       continue-on-error: true
       with:
         sbom: sbom.spdx.json
