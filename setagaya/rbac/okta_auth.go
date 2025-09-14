@@ -55,20 +55,31 @@ func NewOktaAuthProvider(config *OktaConfig, logger Logger) (*OktaAuthProvider, 
 
 // initMockPublicKey creates a mock RSA public key for testing
 func (p *OktaAuthProvider) initMockPublicKey() error {
-	// Mock RSA public key for testing (in production, this would be fetched from Okta)
+	// WARNING: This is a mock key for testing only. In production,
+	// public keys must be fetched from Okta's JWKS endpoint
+	// and validated against the issuer's certificate chain.
 	mockPubKeyPEM := `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuVKVqEL0LK2AQqnM4EgF
-JUP6eLjr8EjCkAfSfMQCDdJjJpZjdM1vJ6xQlgJKAUpT8sK4nJ1JzKbOpXyqV3hE
-QwrX+3eKZQwmgX2wCGqXhzv4NjfGZZdQ1bQ7LHJ3gT8oGhYoNjIzOzJlOGNlOTJl
-OGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJl
-OGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJl
-OGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJlOGNlOTJl
-OQIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4f5wg5l2hKsTeNem/V41
+fGnJm6gOdrj8ym3rFkEjWT2btf02uSG5fxmQE7D4LF5wqGMz1Wsp1qZF3cT2sYRW
+iR4dPF76VsqxlLV1+fYPj8T2yAg9Qz1PdX5fL3Hm0FG9c5+4q2qV0+K5U5J+d2Y+
+2A9a2KzG2e1zJ5g+3Mj5c5X3PQ8G9JGJHzO6Qbg+7mh+ZGR2SdE8bKz3CXR8eD8k
+mJkWXvOzF/B4Q2bk7S5B5CrA9d+zP+4H7G5GzF9B5FzQzF/J8B4A2N5G+A4MzP+
+LzJ+Q4J5G5Bz6Z5QzDzL9M5YzGJF8+2C5JzF/8+gJzGzS4K+F/T+5r5Yz8VZPF+
+wIDAQAB
 -----END PUBLIC KEY-----`
 
-	block, _ := pem.Decode([]byte(mockPubKeyPEM))
+	block, rest := pem.Decode([]byte(mockPubKeyPEM))
 	if block == nil {
-		return fmt.Errorf("failed to parse PEM block")
+		return fmt.Errorf("failed to decode PEM block: invalid PEM format")
+	}
+
+	// Ensure no trailing data exists after PEM block
+	if len(rest) > 0 {
+		p.logger.Warn("Unexpected data after PEM block", "length", len(rest))
+	}
+
+	if block.Type != "PUBLIC KEY" {
+		return fmt.Errorf("invalid PEM block type: expected 'PUBLIC KEY', got '%s'", block.Type)
 	}
 
 	pubKey, err := x509.ParsePKIXPublicKey(block.Bytes)

@@ -7,6 +7,7 @@ import (
 // Error codes for RBAC operations
 const (
 	ErrCodeInvalidConfig       = "invalid_config"
+	ErrCodeInvalidSession      = "invalid_session"
 	ErrCodeSessionNotFound     = "session_not_found"
 	ErrCodeSessionExpired      = "session_expired"
 	ErrCodeTokenExchangeFailed = "token_exchange_failed"

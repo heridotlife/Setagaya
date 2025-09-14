@@ -2,6 +2,7 @@ package rbac
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -39,24 +40,38 @@ func (m *JWTMiddleware) RequireAuthentication() httprouter.Handle {
 		// Extract JWT token from Authorization header
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			m.logger.Warn("Missing Authorization header", "path", r.URL.Path, "method", r.Method)
+			m.logger.Warn("Missing Authorization header", "path", r.URL.Path, "method", r.Method, "ip", r.RemoteAddr)
 			http.Error(w, "Authorization required", http.StatusUnauthorized)
+			return
+		}
+
+		// Validate Authorization header length to prevent buffer overflow attacks
+		if len(authHeader) > 8192 { // Maximum reasonable JWT size
+			m.logger.Warn("Authorization header too long", "length", len(authHeader), "ip", r.RemoteAddr)
+			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
 			return
 		}
 
 		// Check for Bearer token format
 		if !strings.HasPrefix(authHeader, "Bearer ") {
-			m.logger.Warn("Invalid Authorization header format", "path", r.URL.Path, "method", r.Method)
+			m.logger.Warn("Invalid Authorization header format", "path", r.URL.Path, "method", r.Method, "ip", r.RemoteAddr)
 			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
 			return
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
+		// Validate token string is not empty and has reasonable length
+		if len(tokenString) == 0 || len(tokenString) > 8000 {
+			m.logger.Warn("Invalid token length", "length", len(tokenString), "ip", r.RemoteAddr)
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
 		// Validate JWT token
 		claims, err := m.authProvider.ValidateJWT(tokenString)
 		if err != nil {
-			m.logger.Error("JWT validation failed", "error", err, "path", r.URL.Path, "method", r.Method)
+			m.logger.Error("JWT validation failed", "error", err, "path", r.URL.Path, "method", r.Method, "ip", r.RemoteAddr)
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
@@ -77,7 +92,11 @@ func (m *JWTMiddleware) RequireAuthentication() httprouter.Handle {
 		// For now, we'll just return success
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(`{"status": "authenticated", "user": "` + userContext.Email + `"}`)); err != nil {
+
+		// Sanitize output to prevent XSS
+		safeEmail := strings.ReplaceAll(userContext.Email, `"`, `\"`)
+		response := fmt.Sprintf(`{"status": "authenticated", "user": "%s"}`, safeEmail)
+		if _, err := w.Write([]byte(response)); err != nil {
 			m.logger.Error("Failed to write response", "error", err)
 		}
 	}

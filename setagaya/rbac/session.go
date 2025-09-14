@@ -58,14 +58,20 @@ func (s *MemorySessionStore) Set(ctx context.Context, sessionID string, data int
 
 // Get retrieves session data by session ID
 func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interface{}, error) {
+	// Validate session ID format to prevent injection attacks
+	if len(sessionID) == 0 || len(sessionID) > 256 {
+		return nil, NewRBACError(ErrCodeInvalidSession, "Invalid session ID format", map[string]interface{}{
+			"sessionIDLength": len(sessionID),
+		})
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	entry, exists := s.sessions[sessionID]
 	if !exists {
-		return nil, NewRBACError(ErrCodeSessionNotFound, "Session not found", map[string]interface{}{
-			"sessionID": sessionID,
-		})
+		// Don't leak information about session existence
+		return nil, NewRBACError(ErrCodeSessionNotFound, "Session not found", nil)
 	}
 
 	// Check expiration
@@ -76,13 +82,19 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 		s.mu.Unlock()
 		s.mu.RLock()
 
-		return nil, NewRBACError(ErrCodeSessionExpired, "Session expired", map[string]interface{}{
-			"sessionID": sessionID,
-		})
+		return nil, NewRBACError(ErrCodeSessionExpired, "Session expired", nil)
 	}
 
-	s.logger.Debug("Session retrieved", "sessionID", sessionID)
+	s.logger.Debug("Session retrieved", "sessionID", sessionID[:minInt(8, len(sessionID))]+"...")
 	return entry.data, nil
+}
+
+// minInt returns the minimum of two integers
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // Delete removes a session by session ID
