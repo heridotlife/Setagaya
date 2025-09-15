@@ -685,21 +685,31 @@ The platform includes comprehensive security automation via GitHub Actions workf
 
 Located in `.github/workflows/`:
 
-- **`security-check.yml`**: Comprehensive security scanning including Gosec, CodeQL, Trivy, TruffleHog
-- **`security-monitoring.yml`**: Continuous security monitoring with automated issue creation
+- **`security-check.yml`**: Comprehensive security scanning including Gosec, CodeQL, dual container scanning (Trivy + Grype)
+- **`security-monitoring.yml`**: Continuous security monitoring with OpenSSF Scorecard, anchore-sbom-scan, and enhanced Grype integration
 - **`security-advisory.yml`**: Security advisory management and emergency response procedures
 - **`code-quality.yml`**: Go linting, testing, Dockerfile validation, YAML checking
 - **`pr-validation.yml`**: PR title validation, diff analysis, security impact assessment
 
+#### Enhanced Security Tool Integration (2025)
+
+- **Grype Integration**: Added comprehensive container vulnerability scanning with SARIF output
+- **OpenSSF Scorecard Enhancement**: Detailed summaries and proper GitHub Security tab categorization
+- **anchore-sbom-scan Improvement**: Robust SARIF validation and comprehensive vulnerability reporting
+- **SARIF Validation**: Automated validation script (`.github/scripts/validate-sarif.sh`) for proper GitHub integration
+- **GitHub Security Tab Organization**: Proper categorization with meaningful tool-specific summaries
+
 #### GitHub Actions Security Features
 
-- **Multi-tool Security Scanning**: Gosec, CodeQL, Trivy, TruffleHog integration
-- **SBOM Generation**: Software Bill of Materials for supply chain security
-- **Automated Vulnerability Detection**: Weekly scans with critical issue escalation
+- **Comprehensive Container Scanning**: Trivy and Grype dual-scanner integration for complete vulnerability coverage
+- **Multi-tool Security Scanning**: Gosec, CodeQL, TruffleHog integration with enhanced SARIF reporting
+- **SBOM Generation and Analysis**: Software Bill of Materials with anchore-sbom-scan vulnerability analysis
+- **Security Posture Assessment**: OpenSSF Scorecard integration with detailed GitHub Security tab summaries
+- **Automated Vulnerability Detection**: Weekly scans with critical issue escalation and actionable reporting
 - **Dependency Management**: Dependabot integration for automated security updates
-- **Container Security**: Image vulnerability scanning and hardening validation
+- **Container Security**: Dual-scanner approach (Trivy + Grype) with hardening validation
 - **Emergency Response**: Automated security advisory creation and notification
-- **OpenSSF Scorecard Integration**: Continuous security posture assessment with SARIF reporting
+- **Enhanced SARIF Integration**: Validated SARIF output with proper categorization for GitHub Security tab
 
 #### Workflow Version Management (2025)
 
