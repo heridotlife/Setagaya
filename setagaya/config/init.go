@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	apiv1 "k8s.io/api/core/v1"
@@ -159,7 +160,10 @@ func loadContext() string {
 }
 
 func (sc *SetagayaConfig) makeHTTPClients() {
-	sc.HTTPClient = &http.Client{}
+	// Configure HTTP client with timeout to prevent hanging requests
+	sc.HTTPClient = &http.Client{
+		Timeout: 30 * time.Second,
+	}
 	sc.HTTPProxyClient = sc.HTTPClient
 	if sc.HttpConfig.Proxy == "" {
 		return
@@ -171,7 +175,10 @@ func (sc *SetagayaConfig) makeHTTPClients() {
 	rt := &http.Transport{
 		Proxy: http.ProxyURL(proxyUrl),
 	}
-	sc.HTTPProxyClient = &http.Client{Transport: rt}
+	sc.HTTPProxyClient = &http.Client{
+		Transport: rt,
+		Timeout:   30 * time.Second,
+	}
 }
 
 func applyJsonLogging() {
