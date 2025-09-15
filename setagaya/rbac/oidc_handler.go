@@ -541,8 +541,6 @@ func constantTimeStringEqual(a, b string) bool {
 	return result == 0
 }
 
-
-
 // sanitizeForJSONStrict provides strict sanitization for JSON values to prevent injection
 func sanitizeForJSONStrict(input string) string {
 	if len(input) == 0 {
