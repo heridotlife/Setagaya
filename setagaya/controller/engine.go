@@ -105,7 +105,9 @@ func (be *baseEngine) subscribe(runID int64) error {
 	log.Printf("Subscribing to engine url %s", streamUrl)
 	ctx, cancel := context.WithCancel(req.Context())
 	req = req.WithContext(ctx)
-	httpClient := &http.Client{}
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+	}
 	stream, err := es.SubscribeWith("", httpClient, req)
 	if err != nil {
 		cancel()

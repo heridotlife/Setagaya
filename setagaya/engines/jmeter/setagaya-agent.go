@@ -137,8 +137,10 @@ func NewServer() (sw *SetagayaWrapper) {
 		closeSignal:    make(chan int),
 		logCounter:     0,
 		Bus:            make(chan string),
-		httpClient:     &http.Client{},
-		storageClient:  sos.Client.Storage,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		storageClient: sos.Client.Storage,
 	}
 	sw.collectionID, sw.planID = findCollectionIDPlanID()
 	reader, writer, err := os.Pipe()
