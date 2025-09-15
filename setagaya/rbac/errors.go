@@ -77,7 +77,7 @@ func NewNotFoundError(resource, id string) *RBACError {
 	// Safe string construction to prevent format string vulnerabilities with user-controlled data
 	sanitizedResource := sanitizeErrorInput(resource)
 	sanitizedID := sanitizeErrorInput(id)
-	
+
 	return &RBACError{
 		Type:    "not_found",
 		Message: sanitizedResource + " with ID " + sanitizedID + " not found",
@@ -170,27 +170,27 @@ func sanitizeErrorType(errorType string) string {
 	if len(errorType) == 0 {
 		return "unknown_error"
 	}
-	
+
 	// Only allow alphanumeric and underscores for error types
 	sanitized := ""
 	for _, char := range errorType {
-		if (char >= 'a' && char <= 'z') || 
-		   (char >= 'A' && char <= 'Z') || 
-		   (char >= '0' && char <= '9') || 
-		   char == '_' {
+		if (char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			char == '_' {
 			sanitized += string(char)
 		}
 	}
-	
+
 	// Limit length
 	if len(sanitized) > 50 {
 		sanitized = sanitized[:50]
 	}
-	
+
 	if len(sanitized) == 0 {
 		return "sanitized_error"
 	}
-	
+
 	return sanitized
 }
 
@@ -199,7 +199,7 @@ func sanitizeErrorMessage(message string) string {
 	if len(message) == 0 {
 		return "An error occurred"
 	}
-	
+
 	// Replace control characters and potentially dangerous sequences
 	sanitized := strings.ReplaceAll(message, "\n", " ")
 	sanitized = strings.ReplaceAll(sanitized, "\r", " ")
@@ -207,12 +207,12 @@ func sanitizeErrorMessage(message string) string {
 	sanitized = strings.ReplaceAll(sanitized, "\"", "'")
 	sanitized = strings.ReplaceAll(sanitized, "<", "&lt;")
 	sanitized = strings.ReplaceAll(sanitized, ">", "&gt;")
-	
+
 	// Limit length to prevent buffer overflow
 	if len(sanitized) > 200 {
 		sanitized = sanitized[:197] + "..."
 	}
-	
+
 	return sanitized
 }
 
@@ -221,26 +221,26 @@ func sanitizeErrorInput(input string) string {
 	if len(input) == 0 {
 		return "unknown"
 	}
-	
+
 	// Very strict sanitization for user inputs in error messages
 	sanitized := ""
 	for _, char := range input {
-		if (char >= 'a' && char <= 'z') || 
-		   (char >= 'A' && char <= 'Z') || 
-		   (char >= '0' && char <= '9') || 
-		   char == '_' || char == '-' {
+		if (char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			char == '_' || char == '-' {
 			sanitized += string(char)
 		}
 	}
-	
+
 	// Limit length
 	if len(sanitized) > 30 {
 		sanitized = sanitized[:30]
 	}
-	
+
 	if len(sanitized) == 0 {
 		return "sanitized_input"
 	}
-	
+
 	return sanitized
 }

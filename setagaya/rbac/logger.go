@@ -44,7 +44,7 @@ func (l *SimpleLogger) Info(message string, fields ...interface{}) {
 	defer l.mu.RUnlock()
 
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	
+
 	// Safe string construction without format strings
 	logMessage := "[" + timestamp + "] [INFO] [" + l.prefix + "] " + sanitizeLogMessage(message)
 
@@ -64,7 +64,7 @@ func (l *SimpleLogger) Warn(message string, fields ...interface{}) {
 	defer l.mu.RUnlock()
 
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	
+
 	// Safe string construction without format strings
 	logMessage := "[" + timestamp + "] [WARN] [" + l.prefix + "] " + sanitizeLogMessage(message)
 
@@ -84,7 +84,7 @@ func (l *SimpleLogger) Error(message string, fields ...interface{}) {
 	defer l.mu.RUnlock()
 
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	
+
 	// Safe string construction without format strings
 	logMessage := "[" + timestamp + "] [ERROR] [" + l.prefix + "] " + sanitizeLogMessage(message)
 
@@ -108,7 +108,7 @@ func (l *SimpleLogger) Debug(message string, fields ...interface{}) {
 	defer l.mu.RUnlock()
 
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	
+
 	// Safe string construction without format strings
 	logMessage := "[" + timestamp + "] [DEBUG] [" + l.prefix + "] " + sanitizeLogMessage(message)
 
@@ -127,17 +127,17 @@ func sanitizeLogMessage(message string) string {
 	if len(message) == 0 {
 		return ""
 	}
-	
+
 	// Replace control characters that could break log format
 	sanitized := strings.ReplaceAll(message, "\n", "\\n")
 	sanitized = strings.ReplaceAll(sanitized, "\r", "\\r")
 	sanitized = strings.ReplaceAll(sanitized, "\t", "\\t")
-	
+
 	// Limit message length to prevent log flooding
 	if len(sanitized) > 500 {
 		sanitized = sanitized[:497] + "..."
 	}
-	
+
 	return sanitized
 }
 
@@ -146,13 +146,13 @@ func sanitizeLogFields(fields []interface{}) string {
 	if len(fields) == 0 {
 		return ""
 	}
-	
+
 	var parts []string
-	
+
 	// Process fields in pairs (key, value)
 	for i := 0; i < len(fields); i += 2 {
 		var key, value string
-		
+
 		if i < len(fields) {
 			if keyStr, ok := fields[i].(string); ok {
 				key = sanitizeLogValue(keyStr)
@@ -160,25 +160,25 @@ func sanitizeLogFields(fields []interface{}) string {
 				key = "field" + string(rune('0'+i/2))
 			}
 		}
-		
+
 		if i+1 < len(fields) {
 			value = sanitizeLogValue(convertToString(fields[i+1]))
 		} else {
 			value = "nil"
 		}
-		
+
 		if key != "" && value != "" {
 			parts = append(parts, key+"="+value)
 		}
 	}
-	
+
 	result := strings.Join(parts, " ")
-	
+
 	// Limit total fields length
 	if len(result) > 1000 {
 		result = result[:997] + "..."
 	}
-	
+
 	return result
 }
 
@@ -187,18 +187,18 @@ func sanitizeLogValue(value string) string {
 	if len(value) == 0 {
 		return ""
 	}
-	
+
 	// Remove control characters and limit length
 	sanitized := strings.ReplaceAll(value, "\n", "\\n")
 	sanitized = strings.ReplaceAll(sanitized, "\r", "\\r")
 	sanitized = strings.ReplaceAll(sanitized, "\t", "\\t")
 	sanitized = strings.ReplaceAll(sanitized, "\"", "\\\"")
-	
+
 	// Limit individual value length
 	if len(sanitized) > 100 {
 		sanitized = sanitized[:97] + "..."
 	}
-	
+
 	return sanitized
 }
 
@@ -207,7 +207,7 @@ func convertToString(value interface{}) string {
 	if value == nil {
 		return "nil"
 	}
-	
+
 	switch v := value.(type) {
 	case string:
 		return v
@@ -250,22 +250,22 @@ func convertIntToString(value int64) string {
 	if value == 0 {
 		return "0"
 	}
-	
+
 	negative := value < 0
 	if negative {
 		value = -value
 	}
-	
+
 	digits := []byte{}
 	for value > 0 {
-		digits = append([]byte{byte('0'+(value%10))}, digits...)
+		digits = append([]byte{byte('0' + (value % 10))}, digits...)
 		value /= 10
 	}
-	
+
 	result := string(digits)
 	if negative {
 		result = "-" + result
 	}
-	
+
 	return result
 }

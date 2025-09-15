@@ -50,7 +50,7 @@ func (h *OIDCHandler) HandleLogin() httprouter.Handle {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		
+
 		// Additional validation for state parameter content
 		if !isValidStateParameter(state) {
 			h.logger.Error("Generated state parameter contains invalid characters")
@@ -60,14 +60,14 @@ func (h *OIDCHandler) HandleLogin() httprouter.Handle {
 
 		// Store state in session for validation
 		ctx := context.Background()
-		sessionID := "state_" + state  // Safe string concatenation instead of format string
+		sessionID := "state_" + state // Safe string concatenation instead of format string
 		sessionData := map[string]interface{}{
 			"state":     state,
 			"timestamp": time.Now(),
 			"ip":        r.RemoteAddr,
 			"userAgent": r.UserAgent(),
 		}
-		
+
 		err = h.sessionStore.Set(ctx, sessionID, sessionData, 10*time.Minute)
 
 		if err != nil {
@@ -132,7 +132,7 @@ func (h *OIDCHandler) HandleCallback() httprouter.Handle {
 
 		// Validate state exists in session
 		ctx := context.Background()
-		sessionID := "state_" + stateParam  // Safe string concatenation
+		sessionID := "state_" + stateParam // Safe string concatenation
 		stateSessionData, err := h.sessionStore.Get(ctx, sessionID)
 		if err != nil {
 			h.logger.Warn("State not found in session or expired", "error", err, "ip", r.RemoteAddr)
@@ -183,17 +183,17 @@ func (h *OIDCHandler) HandleCallback() httprouter.Handle {
 		if errorCode := r.URL.Query().Get("error"); errorCode != "" {
 			errorDesc := r.URL.Query().Get("error_description")
 			h.logger.Warn("OAuth error in callback", "error", errorCode, "description", errorDesc, "ip", r.RemoteAddr)
-			
+
 			// Comprehensive sanitization to prevent XSS and format string attacks
 			safeErrorCode := sanitizeForOAuth(errorCode)
 			safeErrorDesc := sanitizeForOAuth(errorDesc)
-			
+
 			// Use safe error message construction without format strings
 			errorMessage := "OAuth error: " + safeErrorCode
 			if safeErrorDesc != "" {
 				errorMessage += " - " + safeErrorDesc
 			}
-			
+
 			http.Error(w, errorMessage, http.StatusBadRequest)
 			return
 		}
@@ -419,13 +419,13 @@ func (h *OIDCHandler) HandleUserInfo() httprouter.Handle {
 		safeUserID := sanitizeForJSONStrict(userContext.UserID)
 		safeEmail := sanitizeForJSONStrict(userContext.Email)
 		safeName := sanitizeForJSONStrict(userContext.Name)
-		
+
 		// Safe JSON construction without format strings
 		roleCount := "0"
 		if len(userContext.GlobalRoles) > 0 {
 			roleCount = convertToString(len(userContext.GlobalRoles))
 		}
-		
+
 		userInfo := `{` +
 			`"user_id": "` + safeUserID + `",` +
 			`"email": "` + safeEmail + `",` +
@@ -478,7 +478,7 @@ func sanitizeForOAuth(input string) string {
 	if len(input) == 0 {
 		return ""
 	}
-	
+
 	// Replace dangerous characters
 	sanitized := strings.ReplaceAll(input, "<", "&lt;")
 	sanitized = strings.ReplaceAll(sanitized, ">", "&gt;")
@@ -488,12 +488,12 @@ func sanitizeForOAuth(input string) string {
 	sanitized = strings.ReplaceAll(sanitized, "\n", " ")
 	sanitized = strings.ReplaceAll(sanitized, "\r", " ")
 	sanitized = strings.ReplaceAll(sanitized, "\t", " ")
-	
+
 	// Limit length to prevent buffer overflow
 	if len(sanitized) > 200 {
 		sanitized = sanitized[:197] + "..."
 	}
-	
+
 	return sanitized
 }
 
@@ -502,7 +502,7 @@ func sanitizeForJSONStrict(input string) string {
 	if len(input) == 0 {
 		return ""
 	}
-	
+
 	// Replace JSON-breaking characters
 	sanitized := strings.ReplaceAll(input, `"`, `\"`)
 	sanitized = strings.ReplaceAll(sanitized, `\`, `\\`)
@@ -511,26 +511,26 @@ func sanitizeForJSONStrict(input string) string {
 	sanitized = strings.ReplaceAll(sanitized, "\t", "\\t")
 	sanitized = strings.ReplaceAll(sanitized, "\b", "\\b")
 	sanitized = strings.ReplaceAll(sanitized, "\f", "\\f")
-	
+
 	// HTML encode for additional XSS protection
 	sanitized = html.EscapeString(sanitized)
-	
+
 	// Strict length limit for user info
 	if len(sanitized) > 100 {
 		sanitized = sanitized[:97] + "..."
 	}
-	
+
 	return sanitized
 }
 
 // isValidStateParameter validates that a state parameter contains only safe characters
 func isValidStateParameter(state string) bool {
 	for _, char := range state {
-		if !((char >= 'a' && char <= 'z') || 
-			 (char >= 'A' && char <= 'Z') || 
-			 (char >= '0' && char <= '9') || 
-			 char == '_' || char == '-' || char == '=' || 
-			 char == '+' || char == '/') { // Base64 URL-safe characters
+		if !((char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			char == '_' || char == '-' || char == '=' ||
+			char == '+' || char == '/') { // Base64 URL-safe characters
 			return false
 		}
 	}

@@ -63,7 +63,7 @@ func (p *OktaAuthProvider) initMockPublicKey() error {
 	// and validated against the issuer's certificate chain.
 	//
 	// SECURITY: Use properly generated cryptographic material instead of static strings
-	
+
 	// Generate a proper RSA key pair for testing instead of using hardcoded material
 	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -113,7 +113,7 @@ func (p *OktaAuthProvider) initMockPublicKey() error {
 		// Safe error construction to prevent format string vulnerabilities with user-controlled PEM data
 		errorMsg := "invalid PEM block type: expected 'PUBLIC KEY', got '" + sanitizeErrorString(decodedBlock.Type) + "'"
 		return &RBACError{
-			Type: "invalid_pem_block",
+			Type:    "invalid_pem_block",
 			Message: errorMsg,
 		}
 	}
@@ -169,7 +169,7 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 	if len(tokenString) > 8192 {
 		p.logger.Warn("JWT token exceeds maximum allowed size", "size", len(tokenString))
 		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token exceeds maximum allowed size", map[string]interface{}{
-			"maxSize": 8192,
+			"maxSize":    8192,
 			"actualSize": len(tokenString),
 		})
 	}
@@ -187,7 +187,7 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 		if len(part) == 0 {
 			// Use safe string construction to prevent format string vulnerabilities
 			partNumber := convertIntToString(int64(i + 1))
-			return nil, NewRBACError(ErrCodeInvalidToken, "JWT part " + partNumber + " is empty", nil)
+			return nil, NewRBACError(ErrCodeInvalidToken, "JWT part "+partNumber+" is empty", nil)
 		}
 	}
 
@@ -200,7 +200,7 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 				"method": token.Header["alg"],
 			})
 		}
-		
+
 		// Additional algorithm validation
 		if alg, ok := token.Header["alg"].(string); ok {
 			if alg != "RS256" && alg != "RS384" && alg != "RS512" {
@@ -208,7 +208,7 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 				// Safe error construction to prevent format string vulnerabilities
 				errorMsg := "unsupported RSA algorithm: " + sanitizeErrorString(alg)
 				return nil, &RBACError{
-					Type: "unsupported_algorithm",
+					Type:    "unsupported_algorithm",
 					Message: errorMsg,
 				}
 			}
@@ -249,7 +249,7 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 	if claims.ExpiresAt != 0 && time.Unix(claims.ExpiresAt, 0).Before(time.Now()) {
 		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token has expired", map[string]interface{}{
 			"expiredAt": time.Unix(claims.ExpiresAt, 0),
-			"now": time.Now(),
+			"now":       time.Now(),
 		})
 	}
 
@@ -257,12 +257,12 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 	if claims.IssuedAt != 0 && time.Unix(claims.IssuedAt, 0).After(time.Now().Add(5*time.Minute)) {
 		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token issued too far in the future", map[string]interface{}{
 			"issuedAt": time.Unix(claims.IssuedAt, 0),
-			"now": time.Now(),
+			"now":      time.Now(),
 		})
 	}
 
-	p.logger.Debug("JWT validation successful", 
-		"subject", sanitizeForLogging(claims.Subject), 
+	p.logger.Debug("JWT validation successful",
+		"subject", sanitizeForLogging(claims.Subject),
 		"email", sanitizeForLogging(claims.Email),
 		"issuer", sanitizeForLogging(claims.Issuer))
 	return claims, nil
@@ -273,19 +273,19 @@ func sanitizeErrorString(input string) string {
 	if len(input) == 0 {
 		return "empty"
 	}
-	
+
 	// Replace potentially dangerous characters
 	sanitized := strings.ReplaceAll(input, "\n", "\\n")
 	sanitized = strings.ReplaceAll(sanitized, "\r", "\\r")
 	sanitized = strings.ReplaceAll(sanitized, "\t", "\\t")
 	sanitized = strings.ReplaceAll(sanitized, "\"", "\\\"")
 	sanitized = strings.ReplaceAll(sanitized, "'", "\\'")
-	
+
 	// Limit length to prevent buffer overflow
 	if len(sanitized) > 50 {
 		sanitized = sanitized[:47] + "..."
 	}
-	
+
 	return sanitized
 }
 
@@ -294,30 +294,30 @@ func sanitizeDomainForURL(domain string) string {
 	if len(domain) == 0 {
 		return "invalid-domain"
 	}
-	
+
 	// Validate domain length
 	if len(domain) > 253 {
 		return "invalid-domain-too-long"
 	}
-	
+
 	// Basic domain validation - only allow alphanumeric, dots, and hyphens
 	for _, char := range domain {
-		if !((char >= 'a' && char <= 'z') || 
-			 (char >= 'A' && char <= 'Z') || 
-			 (char >= '0' && char <= '9') || 
-			 char == '.' || char == '-') {
+		if !((char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			char == '.' || char == '-') {
 			return "invalid-domain-chars"
 		}
 	}
-	
+
 	// Additional security: prevent obvious injection attempts
-	if strings.Contains(domain, "..") || 
-	   strings.Contains(domain, "//") ||
-	   strings.Contains(domain, "@") ||
-	   strings.Contains(domain, ":") {
+	if strings.Contains(domain, "..") ||
+		strings.Contains(domain, "//") ||
+		strings.Contains(domain, "@") ||
+		strings.Contains(domain, ":") {
 		return "invalid-domain-format"
 	}
-	
+
 	return domain
 }
 

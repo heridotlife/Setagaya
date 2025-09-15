@@ -96,7 +96,7 @@ func (m *JWTMiddleware) RequireAuthentication() httprouter.Handle {
 		// Sanitize output to prevent XSS and format string vulnerabilities
 		safeEmail := sanitizeForJSON(userContext.Email)
 		safeStatus := "authenticated"
-		
+
 		// Use safe string construction instead of format strings with user data
 		response := `{"status": "` + safeStatus + `", "user": "` + safeEmail + `"}`
 		if _, err := w.Write([]byte(response)); err != nil {
@@ -149,12 +149,12 @@ func (m *JWTMiddleware) RequirePermission(resource, action string) httprouter.Ha
 		// Continue to next handler
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		
+
 		// Use safe string construction to prevent format string vulnerabilities
 		safeResource := sanitizeForJSON(resource)
 		safeAction := sanitizeForJSON(action)
 		response := `{"status": "authorized", "resource": "` + safeResource + `", "action": "` + safeAction + `"}`
-		
+
 		if _, err := w.Write([]byte(response)); err != nil {
 			m.logger.Error("Failed to write response", "error", err)
 		}
@@ -223,11 +223,11 @@ func (m *JWTMiddleware) RequireTenantPermission(resource, action string) httprou
 		// Continue to next handler
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		
+
 		// Safe string construction to prevent format string vulnerabilities
 		safeTenantIDStr := sanitizeForJSON(tenantIDStr)
 		response := `{"status": "authorized", "tenantId": "` + safeTenantIDStr + `"}`
-		
+
 		if _, err := w.Write([]byte(response)); err != nil {
 			m.logger.Error("Failed to write response", "error", err)
 		}
@@ -376,15 +376,15 @@ func sanitizeForJSON(input string) string {
 	sanitized = strings.ReplaceAll(sanitized, "\n", "\\n")
 	sanitized = strings.ReplaceAll(sanitized, "\r", "\\r")
 	sanitized = strings.ReplaceAll(sanitized, "\t", "\\t")
-	
+
 	// HTML encode to prevent XSS
 	sanitized = html.EscapeString(sanitized)
-	
+
 	// Limit length to prevent buffer overflow
 	if len(sanitized) > 256 {
 		sanitized = sanitized[:253] + "..."
 	}
-	
+
 	return sanitized
 }
 
@@ -393,16 +393,16 @@ func sanitizeForLogging(input string) string {
 	if len(input) == 0 {
 		return ""
 	}
-	
+
 	// Replace control characters
 	sanitized := strings.ReplaceAll(input, "\n", "\\n")
 	sanitized = strings.ReplaceAll(sanitized, "\r", "\\r")
 	sanitized = strings.ReplaceAll(sanitized, "\t", "\\t")
-	
+
 	// Limit length to prevent log flooding
 	if len(sanitized) > 100 {
 		sanitized = sanitized[:97] + "..."
 	}
-	
+
 	return sanitized
 }

@@ -56,10 +56,10 @@ func (s *MemorySessionStore) Set(ctx context.Context, sessionID string, data int
 	if len(sessionID) == 0 {
 		return NewRBACError(ErrCodeInvalidSession, "Session ID cannot be empty", nil)
 	}
-	
+
 	if len(sessionID) > 256 {
 		return NewRBACError(ErrCodeInvalidSession, "Session ID too long", map[string]interface{}{
-			"maxLength": 256,
+			"maxLength":    256,
 			"actualLength": len(sessionID),
 		})
 	}
@@ -67,14 +67,14 @@ func (s *MemorySessionStore) Set(ctx context.Context, sessionID string, data int
 	// Validate TTL is reasonable (between 1 minute and 24 hours)
 	if ttl < time.Minute {
 		return NewRBACError(ErrCodeInvalidSession, "Session TTL too short", map[string]interface{}{
-			"minTTL": "1 minute",
+			"minTTL":      "1 minute",
 			"providedTTL": ttl.String(),
 		})
 	}
-	
+
 	if ttl > 24*time.Hour {
 		return NewRBACError(ErrCodeInvalidSession, "Session TTL too long", map[string]interface{}{
-			"maxTTL": "24 hours",
+			"maxTTL":      "24 hours",
 			"providedTTL": ttl.String(),
 		})
 	}
@@ -90,14 +90,14 @@ func (s *MemorySessionStore) Set(ctx context.Context, sessionID string, data int
 	// Check session store size to prevent memory exhaustion attacks
 	if len(s.sessions) > 10000 { // Configurable limit
 		s.logger.Warn("Session store approaching capacity limit", "currentSessions", len(s.sessions))
-		
+
 		// Trigger immediate cleanup of expired sessions
 		s.cleanupExpiredSessions()
-		
+
 		// If still too many sessions, refuse new ones
 		if len(s.sessions) > 10000 {
 			return NewRBACError(ErrCodeSessionStoreFull, "Session store at capacity", map[string]interface{}{
-				"maxSessions": 10000,
+				"maxSessions":     10000,
 				"currentSessions": len(s.sessions),
 			})
 		}
@@ -108,7 +108,7 @@ func (s *MemorySessionStore) Set(ctx context.Context, sessionID string, data int
 		expiresAt: time.Now().Add(ttl),
 	}
 
-	s.logger.Debug("Session stored successfully", 
+	s.logger.Debug("Session stored successfully",
 		"sessionPrefix", sanitizeLogString(sessionID[:minInt(8, len(sessionID))])+"...",
 		"ttl", ttl.String(),
 		"totalSessions", len(s.sessions))
@@ -121,17 +121,17 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 	if len(sessionID) == 0 {
 		return nil, NewRBACError(ErrCodeInvalidSession, "Session ID cannot be empty", nil)
 	}
-	
+
 	if len(sessionID) < 10 {
 		return nil, NewRBACError(ErrCodeInvalidSession, "Session ID too short", map[string]interface{}{
-			"minLength": 10,
+			"minLength":    10,
 			"actualLength": len(sessionID),
 		})
 	}
-	
+
 	if len(sessionID) > 256 {
 		return nil, NewRBACError(ErrCodeInvalidSession, "Session ID too long", map[string]interface{}{
-			"maxLength": 256,
+			"maxLength":    256,
 			"actualLength": len(sessionID),
 		})
 	}
@@ -140,15 +140,15 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 	// Use constant-time validation to prevent timing attacks
 	invalidCharFound := false
 	for _, char := range sessionID {
-		if !((char >= 'a' && char <= 'z') || 
-			 (char >= 'A' && char <= 'Z') || 
-			 (char >= '0' && char <= '9') || 
-			 char == '_' || char == '-' || char == '=') {
+		if !((char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			char == '_' || char == '-' || char == '=') {
 			invalidCharFound = true
 			// Continue checking all characters to prevent timing attacks
 		}
 	}
-	
+
 	if invalidCharFound {
 		return nil, NewRBACError(ErrCodeInvalidSession, "Session ID contains invalid characters", map[string]interface{}{
 			"allowedChars": "a-z, A-Z, 0-9, _, -, =",
@@ -175,7 +175,7 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 		s.mu.RLock()
 
 		return nil, NewRBACError(ErrCodeSessionExpired, "Session has expired", map[string]interface{}{
-			"expiredAt": entry.expiresAt,
+			"expiredAt":   entry.expiresAt,
 			"currentTime": now,
 		})
 	}
@@ -184,16 +184,16 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 	if entry.data == nil {
 		return nil, NewRBACError(ErrCodeInvalidSession, "Session data is corrupted", nil)
 	}
-	
+
 	// Validate session data integrity if it's a map (common pattern)
 	if sessionMap, ok := entry.data.(map[string]interface{}); ok {
 		// Check for suspicious data patterns that might indicate tampering
 		if len(sessionMap) > 50 { // Reasonable limit for session data fields
-			s.logger.Warn("Session contains unusually large number of fields", 
+			s.logger.Warn("Session contains unusually large number of fields",
 				"sessionPrefix", sanitizeLogString(sessionID[:minInt(8, len(sessionID))])+"...",
 				"fieldCount", len(sessionMap))
 		}
-		
+
 		// Validate critical session fields if they exist
 		if userContext, exists := sessionMap["userContext"]; exists && userContext == nil {
 			return nil, NewRBACError(ErrCodeInvalidSession, "Session user context is corrupted", nil)
@@ -201,10 +201,10 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 	}
 
 	// Log session access with minimal information (security)
-	s.logger.Debug("Session retrieved successfully", 
+	s.logger.Debug("Session retrieved successfully",
 		"sessionPrefix", sanitizeLogString(sessionID[:minInt(8, len(sessionID))])+"...",
 		"expiresIn", entry.expiresAt.Sub(now).String())
-	
+
 	return entry.data, nil
 }
 
@@ -222,10 +222,10 @@ func (s *MemorySessionStore) Delete(ctx context.Context, sessionID string) error
 	if len(sessionID) == 0 {
 		return NewRBACError(ErrCodeInvalidSession, "Session ID cannot be empty", nil)
 	}
-	
+
 	if len(sessionID) > 256 {
 		return NewRBACError(ErrCodeInvalidSession, "Session ID too long for deletion", map[string]interface{}{
-			"maxLength": 256,
+			"maxLength":    256,
 			"actualLength": len(sessionID),
 		})
 	}
@@ -235,18 +235,18 @@ func (s *MemorySessionStore) Delete(ctx context.Context, sessionID string) error
 
 	// Check if session exists before deletion
 	_, exists := s.sessions[sessionID]
-	
+
 	delete(s.sessions, sessionID)
-	
+
 	if exists {
-		s.logger.Debug("Session deleted successfully", 
+		s.logger.Debug("Session deleted successfully",
 			"sessionPrefix", sessionID[:minInt(8, len(sessionID))]+"...",
 			"remainingSessions", len(s.sessions))
 	} else {
-		s.logger.Debug("Attempted to delete non-existent session", 
+		s.logger.Debug("Attempted to delete non-existent session",
 			"sessionPrefix", sessionID[:minInt(8, len(sessionID))]+"...")
 	}
-	
+
 	return nil
 }
 
@@ -257,10 +257,10 @@ func (s *MemorySessionStore) Cleanup(ctx context.Context) error {
 
 	initialCount := len(s.sessions)
 	s.cleanupExpiredSessions()
-	
+
 	cleanedCount := initialCount - len(s.sessions)
 	if cleanedCount > 0 {
-		s.logger.Info("Session cleanup completed", 
+		s.logger.Info("Session cleanup completed",
 			"cleanedSessions", cleanedCount,
 			"remainingSessions", len(s.sessions),
 			"initialCount", initialCount)
@@ -305,7 +305,7 @@ func (s *MemorySessionStore) cleanupExpiredSessions() {
 	}
 
 	if expiredCount > 0 {
-		s.logger.Debug("Cleaned up expired sessions", 
+		s.logger.Debug("Cleaned up expired sessions",
 			"expiredCount", expiredCount,
 			"remainingSessions", len(s.sessions))
 	}
