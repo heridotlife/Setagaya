@@ -33,9 +33,9 @@ func NewIntegration() (*Integration, error) {
 		AuditEnabled:       true,
 		PermissionCacheTTL: 30,
 		OktaConfig: &OktaConfig{
-			Domain:       "dev.okta.com",
-			ClientID:     "dev-client-id",
-			ClientSecret: "dev-client-secret",
+			Domain:       "REPLACE_WITH_OKTA_DOMAIN",
+			ClientID:     "REPLACE_WITH_CLIENT_ID",
+			ClientSecret: "REPLACE_WITH_CLIENT_SECRET", // WARNING: Use environment variables in production
 			RedirectURI:  "http://localhost:8080/api/auth/callback",
 			Scopes:       []string{"openid", "profile", "email", "groups"},
 			GroupClaims:  "groups",

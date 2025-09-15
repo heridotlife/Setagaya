@@ -10,6 +10,7 @@ const (
 	ErrCodeInvalidSession      = "invalid_session"
 	ErrCodeSessionNotFound     = "session_not_found"
 	ErrCodeSessionExpired      = "session_expired"
+	ErrCodeSessionStoreFull    = "session_store_full"
 	ErrCodeTokenExchangeFailed = "token_exchange_failed"
 	ErrCodeInvalidToken        = "invalid_token"
 )

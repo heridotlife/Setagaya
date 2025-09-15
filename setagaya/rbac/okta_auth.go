@@ -2,6 +2,7 @@ package rbac
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -53,46 +54,73 @@ func NewOktaAuthProvider(config *OktaConfig, logger Logger) (*OktaAuthProvider, 
 	return provider, nil
 }
 
-// initMockPublicKey creates a mock RSA public key for testing
+// initMockPublicKey creates a properly generated RSA public key for testing
 func (p *OktaAuthProvider) initMockPublicKey() error {
 	// WARNING: This is a mock key for testing only. In production,
 	// public keys must be fetched from Okta's JWKS endpoint
 	// and validated against the issuer's certificate chain.
-	mockPubKeyPEM := `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4f5wg5l2hKsTeNem/V41
-fGnJm6gOdrj8ym3rFkEjWT2btf02uSG5fxmQE7D4LF5wqGMz1Wsp1qZF3cT2sYRW
-iR4dPF76VsqxlLV1+fYPj8T2yAg9Qz1PdX5fL3Hm0FG9c5+4q2qV0+K5U5J+d2Y+
-2A9a2KzG2e1zJ5g+3Mj5c5X3PQ8G9JGJHzO6Qbg+7mh+ZGR2SdE8bKz3CXR8eD8k
-mJkWXvOzF/B4Q2bk7S5B5CrA9d+zP+4H7G5GzF9B5FzQzF/J8B4A2N5G+A4MzP+
-LzJ+Q4J5G5Bz6Z5QzDzL9M5YzGJF8+2C5JzF/8+gJzGzS4K+F/T+5r5Yz8VZPF+
-wIDAQAB
------END PUBLIC KEY-----`
+	//
+	// SECURITY: Use properly generated cryptographic material instead of static strings
+	
+	// Generate a proper RSA key pair for testing instead of using hardcoded material
+	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return fmt.Errorf("failed to generate RSA key: %w", err)
+	}
 
-	block, rest := pem.Decode([]byte(mockPubKeyPEM))
-	if block == nil {
-		return fmt.Errorf("failed to decode PEM block: invalid PEM format")
+	// Use the public key from the generated pair
+	p.publicKey = &privKey.PublicKey
+
+	// For compatibility with PEM operations, also validate PEM handling
+	// Generate a PEM representation and validate it
+	pubKeyDER, err := x509.MarshalPKIXPublicKey(&privKey.PublicKey)
+	if err != nil {
+		return fmt.Errorf("failed to marshal public key: %w", err)
+	}
+
+	pemBlock := &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: pubKeyDER,
+	}
+
+	pemData := pem.EncodeToMemory(pemBlock)
+	if pemData == nil {
+		return fmt.Errorf("failed to encode PEM data")
+	}
+
+	// Validate PEM decoding with comprehensive error handling
+	decodedBlock, rest := pem.Decode(pemData)
+	if decodedBlock == nil {
+		return fmt.Errorf("failed to decode generated PEM block: invalid PEM format")
 	}
 
 	// Ensure no trailing data exists after PEM block
 	if len(rest) > 0 {
-		p.logger.Warn("Unexpected data after PEM block", "length", len(rest))
+		p.logger.Warn("Unexpected data after PEM block during validation", "length", len(rest))
+		return fmt.Errorf("invalid PEM format: unexpected trailing data")
 	}
 
-	if block.Type != "PUBLIC KEY" {
-		return fmt.Errorf("invalid PEM block type: expected 'PUBLIC KEY', got '%s'", block.Type)
+	// Validate PEM block type strictly
+	if decodedBlock.Type != "PUBLIC KEY" {
+		return fmt.Errorf("invalid PEM block type: expected 'PUBLIC KEY', got '%s'", decodedBlock.Type)
 	}
 
-	pubKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+	// Re-parse the key to ensure validity
+	parsedPubKey, err := x509.ParsePKIXPublicKey(decodedBlock.Bytes)
 	if err != nil {
-		return fmt.Errorf("failed to parse public key: %w", err)
+		return fmt.Errorf("failed to parse generated public key: %w", err)
 	}
 
-	rsaPubKey, ok := pubKey.(*rsa.PublicKey)
+	// Ensure it's an RSA key
+	_, ok := parsedPubKey.(*rsa.PublicKey)
 	if !ok {
-		return fmt.Errorf("not an RSA public key")
+		return fmt.Errorf("generated key is not an RSA public key")
 	}
 
-	p.publicKey = rsaPubKey
+	p.logger.Info("Generated and validated mock RSA public key for testing",
+		"keySize", privKey.N.BitLen(),
+		"warning", "PRODUCTION DEPLOYMENT REQUIRES OKTA JWKS ENDPOINT")
+
 	return nil
 }
 
@@ -115,34 +143,104 @@ func (p *OktaAuthProvider) ExchangeCodeForToken(ctx context.Context, code string
 	return token, nil
 }
 
-// ValidateJWT validates a JWT token and returns the claims
+// ValidateJWT validates a JWT token and returns the claims with enhanced security
 func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) {
-	// Parse and validate the JWT token
+	// Enhanced input validation to prevent buffer overflow and injection attacks
+	if len(tokenString) == 0 {
+		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token cannot be empty", nil)
+	}
+
+	// Limit JWT token size to prevent DoS attacks (8KB maximum)
+	if len(tokenString) > 8192 {
+		p.logger.Warn("JWT token exceeds maximum allowed size", "size", len(tokenString))
+		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token exceeds maximum allowed size", map[string]interface{}{
+			"maxSize": 8192,
+			"actualSize": len(tokenString),
+		})
+	}
+
+	// Validate JWT format (basic structure check)
+	parts := strings.Split(tokenString, ".")
+	if len(parts) != 3 {
+		return nil, NewRBACError(ErrCodeInvalidToken, "Invalid JWT format: must have 3 parts separated by dots", map[string]interface{}{
+			"actualParts": len(parts),
+		})
+	}
+
+	// Validate each part is not empty
+	for i, part := range parts {
+		if len(part) == 0 {
+			return nil, NewRBACError(ErrCodeInvalidToken, fmt.Sprintf("JWT part %d is empty", i+1), nil)
+		}
+	}
+
+	// Parse and validate the JWT token with proper error handling
 	token, err := jwt.ParseWithClaims(tokenString, &OktaClaims{}, func(token *jwt.Token) (interface{}, error) {
-		// Verify the signing method
+		// Verify the signing method - only allow RSA
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			p.logger.Warn("Unexpected JWT signing method", "method", token.Header["alg"])
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
+		
+		// Additional algorithm validation
+		if alg, ok := token.Header["alg"].(string); ok {
+			if alg != "RS256" && alg != "RS384" && alg != "RS512" {
+				p.logger.Warn("Unsupported RSA algorithm", "algorithm", alg)
+				return nil, fmt.Errorf("unsupported RSA algorithm: %s", alg)
+			}
+		}
+
 		return p.publicKey, nil
 	})
 
 	if err != nil {
-		p.logger.Error("JWT validation failed", "error", err)
-		return nil, NewRBACError(ErrCodeInvalidToken, "Invalid JWT token", map[string]interface{}{
-			"error": err.Error(),
+		// Sanitize error message to prevent information disclosure
+		p.logger.Error("JWT validation failed", "error", err.Error())
+		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token validation failed", map[string]interface{}{
+			"reason": "invalid_signature_or_format",
 		})
 	}
 
 	if !token.Valid {
+		p.logger.Warn("JWT token is invalid")
 		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token is not valid", nil)
 	}
 
 	claims, ok := token.Claims.(*OktaClaims)
 	if !ok {
-		return nil, NewRBACError(ErrCodeInvalidToken, "Invalid JWT claims", nil)
+		p.logger.Error("Failed to extract JWT claims")
+		return nil, NewRBACError(ErrCodeInvalidToken, "Invalid JWT claims structure", nil)
 	}
 
-	p.logger.Debug("JWT validation successful", "subject", claims.Subject, "email", claims.Email)
+	// Additional claims validation
+	if claims.Subject == "" {
+		return nil, NewRBACError(ErrCodeInvalidToken, "JWT claims missing required subject", nil)
+	}
+
+	if claims.Email == "" {
+		return nil, NewRBACError(ErrCodeInvalidToken, "JWT claims missing required email", nil)
+	}
+
+	// Validate expiration time
+	if claims.ExpiresAt != 0 && time.Unix(claims.ExpiresAt, 0).Before(time.Now()) {
+		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token has expired", map[string]interface{}{
+			"expiredAt": time.Unix(claims.ExpiresAt, 0),
+			"now": time.Now(),
+		})
+	}
+
+	// Validate issued at time (not too far in the future)
+	if claims.IssuedAt != 0 && time.Unix(claims.IssuedAt, 0).After(time.Now().Add(5*time.Minute)) {
+		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token issued too far in the future", map[string]interface{}{
+			"issuedAt": time.Unix(claims.IssuedAt, 0),
+			"now": time.Now(),
+		})
+	}
+
+	p.logger.Debug("JWT validation successful", 
+		"subject", claims.Subject, 
+		"email", claims.Email,
+		"issuer", claims.Issuer)
 	return claims, nil
 }
 

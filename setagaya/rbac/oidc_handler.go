@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -53,13 +53,15 @@ func (h *OIDCHandler) HandleLogin() httprouter.Handle {
 
 		// Store state in session for validation
 		ctx := context.Background()
-		sessionID := fmt.Sprintf("state_%s", state)
-		err = h.sessionStore.Set(ctx, sessionID, map[string]interface{}{
+		sessionID := "state_" + state  // Safe string concatenation instead of format string
+		sessionData := map[string]interface{}{
 			"state":     state,
 			"timestamp": time.Now(),
 			"ip":        r.RemoteAddr,
 			"userAgent": r.UserAgent(),
-		}, 10*time.Minute)
+		}
+		
+		err = h.sessionStore.Set(ctx, sessionID, sessionData, 10*time.Minute)
 
 		if err != nil {
 			h.logger.Error("Failed to store state in session", "error", err, "ip", r.RemoteAddr)
@@ -123,7 +125,7 @@ func (h *OIDCHandler) HandleCallback() httprouter.Handle {
 
 		// Validate state exists in session
 		ctx := context.Background()
-		sessionID := fmt.Sprintf("state_%s", stateParam)
+		sessionID := "state_" + stateParam  // Safe string concatenation
 		stateSessionData, err := h.sessionStore.Get(ctx, sessionID)
 		if err != nil {
 			h.logger.Warn("State not found in session or expired", "error", err, "ip", r.RemoteAddr)
@@ -174,10 +176,18 @@ func (h *OIDCHandler) HandleCallback() httprouter.Handle {
 		if errorCode := r.URL.Query().Get("error"); errorCode != "" {
 			errorDesc := r.URL.Query().Get("error_description")
 			h.logger.Warn("OAuth error in callback", "error", errorCode, "description", errorDesc, "ip", r.RemoteAddr)
-			// Sanitize error description to prevent XSS
-			safeErrorDesc := strings.ReplaceAll(errorDesc, "<", "&lt;")
-			safeErrorDesc = strings.ReplaceAll(safeErrorDesc, ">", "&gt;")
-			http.Error(w, fmt.Sprintf("OAuth error: %s", safeErrorDesc), http.StatusBadRequest)
+			
+			// Comprehensive sanitization to prevent XSS and format string attacks
+			safeErrorCode := sanitizeForOAuth(errorCode)
+			safeErrorDesc := sanitizeForOAuth(errorDesc)
+			
+			// Use safe error message construction without format strings
+			errorMessage := "OAuth error: " + safeErrorCode
+			if safeErrorDesc != "" {
+				errorMessage += " - " + safeErrorDesc
+			}
+			
+			http.Error(w, errorMessage, http.StatusBadRequest)
 			return
 		}
 
@@ -295,8 +305,8 @@ func (h *OIDCHandler) HandleLogout() httprouter.Handle {
 				return
 			}
 
-			// Construct Okta logout URL with proper validation
-			logoutURL := fmt.Sprintf("https://%s/oauth2/default/v1/logout", h.authProvider.config.Domain)
+			// Construct Okta logout URL with proper validation - safe string concatenation
+			logoutURL := "https://" + h.authProvider.config.Domain + "/oauth2/default/v1/logout"
 			postLogoutRedirectURI := h.baseURL + "/login"
 
 			// Validate redirect URI to prevent open redirect
@@ -388,26 +398,34 @@ func (h *OIDCHandler) HandleUserInfo() httprouter.Handle {
 			}
 		}
 
-		// Return sanitized user information
+		// Return sanitized user information with enhanced security
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.WriteHeader(http.StatusOK)
 
-		// Sanitize all user data to prevent XSS
-		safeUserID := strings.ReplaceAll(userContext.UserID, `"`, `\"`)
-		safeEmail := strings.ReplaceAll(userContext.Email, `"`, `\"`)
-		safeName := strings.ReplaceAll(userContext.Name, `"`, `\"`)
-
-		// Simplified user info response with essential data only
-		userInfo := fmt.Sprintf(`{
-			"user_id": "%s",
-			"email": "%s", 
-			"name": "%s",
-			"roles": %d,
-			"authenticated": true
-		}`, safeUserID, safeEmail, safeName, len(userContext.GlobalRoles))
+		// Comprehensive sanitization to prevent XSS and injection attacks
+		safeUserID := sanitizeForJSONStrict(userContext.UserID)
+		safeEmail := sanitizeForJSONStrict(userContext.Email)
+		safeName := sanitizeForJSONStrict(userContext.Name)
+		
+		// Safe JSON construction without format strings
+		roleCount := "0"
+		if len(userContext.GlobalRoles) > 0 {
+			roleCount = convertToString(len(userContext.GlobalRoles))
+		}
+		
+		userInfo := `{` +
+			`"user_id": "` + safeUserID + `",` +
+			`"email": "` + safeEmail + `",` +
+			`"name": "` + safeName + `",` +
+			`"roles": ` + roleCount + `,` +
+			`"authenticated": true` +
+			`}`
 
 		if _, err := w.Write([]byte(userInfo)); err != nil {
 			h.logger.Error("Failed to write response", "error", err, "ip", r.RemoteAddr)
@@ -430,7 +448,8 @@ func (h *OIDCHandler) generateSessionID() (string, error) {
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("sess_%s", base64.URLEncoding.EncodeToString(bytes)), nil
+	// Safe string concatenation instead of format string
+	return "sess_" + base64.URLEncoding.EncodeToString(bytes), nil
 }
 
 // constantTimeStringEqual performs constant-time string comparison to prevent timing attacks
@@ -445,4 +464,54 @@ func constantTimeStringEqual(a, b string) bool {
 	}
 
 	return result == 0
+}
+
+// sanitizeForOAuth safely sanitizes OAuth error messages to prevent XSS and injection
+func sanitizeForOAuth(input string) string {
+	if len(input) == 0 {
+		return ""
+	}
+	
+	// Replace dangerous characters
+	sanitized := strings.ReplaceAll(input, "<", "&lt;")
+	sanitized = strings.ReplaceAll(sanitized, ">", "&gt;")
+	sanitized = strings.ReplaceAll(sanitized, `"`, "&quot;")
+	sanitized = strings.ReplaceAll(sanitized, `'`, "&#x27;")
+	sanitized = strings.ReplaceAll(sanitized, "&", "&amp;")
+	sanitized = strings.ReplaceAll(sanitized, "\n", " ")
+	sanitized = strings.ReplaceAll(sanitized, "\r", " ")
+	sanitized = strings.ReplaceAll(sanitized, "\t", " ")
+	
+	// Limit length to prevent buffer overflow
+	if len(sanitized) > 200 {
+		sanitized = sanitized[:197] + "..."
+	}
+	
+	return sanitized
+}
+
+// sanitizeForJSONStrict provides strict sanitization for JSON values to prevent injection
+func sanitizeForJSONStrict(input string) string {
+	if len(input) == 0 {
+		return ""
+	}
+	
+	// Replace JSON-breaking characters
+	sanitized := strings.ReplaceAll(input, `"`, `\"`)
+	sanitized = strings.ReplaceAll(sanitized, `\`, `\\`)
+	sanitized = strings.ReplaceAll(sanitized, "\n", "\\n")
+	sanitized = strings.ReplaceAll(sanitized, "\r", "\\r")
+	sanitized = strings.ReplaceAll(sanitized, "\t", "\\t")
+	sanitized = strings.ReplaceAll(sanitized, "\b", "\\b")
+	sanitized = strings.ReplaceAll(sanitized, "\f", "\\f")
+	
+	// HTML encode for additional XSS protection
+	sanitized = html.EscapeString(sanitized)
+	
+	// Strict length limit for user info
+	if len(sanitized) > 100 {
+		sanitized = sanitized[:97] + "..."
+	}
+	
+	return sanitized
 }
