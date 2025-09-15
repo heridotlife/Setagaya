@@ -270,10 +270,8 @@ func convertUnsignedToString(value interface{}) string {
 func convertUintToString(v uint64) string {
 	// Check for overflow before conversion
 	if v > 9223372036854775807 { // math.MaxInt64
-		if v <= 18446744073709551615 { // math.MaxUint64
-			return "large_uint64"
-		}
-		return "large_uint"
+		// All uint64 values are <= math.MaxUint64, so just return the large value indicator
+		return "large_uint64"
 	}
 	return convertIntToString(int64(v))
 }

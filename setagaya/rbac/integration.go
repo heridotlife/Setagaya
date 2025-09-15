@@ -253,6 +253,7 @@ func initializeDefaultData(engine RBACEngine) error {
 	if _, err := engine.CreateTenant(ctx, defaultTenant); err != nil {
 		// Silently ignore errors during initialization (likely due to existing data)
 		// No logging here to prevent potential information disclosure
+		_ = err // Acknowledge error is handled
 	}
 
 	// Create default roles
@@ -303,6 +304,7 @@ func initializeDefaultData(engine RBACEngine) error {
 		if err := engine.CreateRole(ctx, role); err != nil {
 			// Silently ignore errors during initialization (likely due to existing data)
 			// No logging here to prevent potential information disclosure
+			_ = err // Acknowledge error is handled
 		}
 	}
 
