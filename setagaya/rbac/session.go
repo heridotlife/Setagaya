@@ -117,25 +117,56 @@ func (s *MemorySessionStore) Set(ctx context.Context, sessionID string, data int
 
 // Get retrieves session data by session ID with enhanced security validation
 func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interface{}, error) {
-	// Enhanced session ID format validation to prevent injection attacks
+	// Validate session ID format and security requirements
+	if err := s.validateSessionID(sessionID); err != nil {
+		return nil, err
+	}
+
+	// Get session with expiration checking
+	entry, err := s.getSessionEntry(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate session data integrity
+	if err := s.validateSessionData(sessionID, entry.data); err != nil {
+		return nil, err
+	}
+
+	// Log session access with minimal information (security)
+	now := time.Now()
+	s.logger.Debug("Session retrieved successfully",
+		"sessionPrefix", sanitizeLogString(sessionID[:minInt(8, len(sessionID))])+"...",
+		"expiresIn", entry.expiresAt.Sub(now).String())
+
+	return entry.data, nil
+}
+
+// validateSessionID validates session ID format and security requirements
+func (s *MemorySessionStore) validateSessionID(sessionID string) error {
 	if len(sessionID) == 0 {
-		return nil, NewRBACError(ErrCodeInvalidSession, "Session ID cannot be empty", nil)
+		return NewRBACError(ErrCodeInvalidSession, "Session ID cannot be empty", nil)
 	}
 
 	if len(sessionID) < 10 {
-		return nil, NewRBACError(ErrCodeInvalidSession, "Session ID too short", map[string]interface{}{
+		return NewRBACError(ErrCodeInvalidSession, "Session ID too short", map[string]interface{}{
 			"minLength":    10,
 			"actualLength": len(sessionID),
 		})
 	}
 
 	if len(sessionID) > 256 {
-		return nil, NewRBACError(ErrCodeInvalidSession, "Session ID too long", map[string]interface{}{
+		return NewRBACError(ErrCodeInvalidSession, "Session ID too long", map[string]interface{}{
 			"maxLength":    256,
 			"actualLength": len(sessionID),
 		})
 	}
 
+	return s.validateSessionIDCharacters(sessionID)
+}
+
+// validateSessionIDCharacters validates session ID contains only safe characters
+func (s *MemorySessionStore) validateSessionIDCharacters(sessionID string) error {
 	// Enhanced session ID format validation for security (alphanumeric and safe characters only)
 	// Use constant-time validation to prevent timing attacks
 	invalidCharFound := false
@@ -150,11 +181,16 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 	}
 
 	if invalidCharFound {
-		return nil, NewRBACError(ErrCodeInvalidSession, "Session ID contains invalid characters", map[string]interface{}{
+		return NewRBACError(ErrCodeInvalidSession, "Session ID contains invalid characters", map[string]interface{}{
 			"allowedChars": "a-z, A-Z, 0-9, _, -, =",
 		})
 	}
 
+	return nil
+}
+
+// getSessionEntry retrieves session entry with expiration checking
+func (s *MemorySessionStore) getSessionEntry(sessionID string) (*sessionEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -180,32 +216,39 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 		})
 	}
 
+	return entry, nil
+}
+
+// validateSessionData validates session data integrity and structure
+func (s *MemorySessionStore) validateSessionData(sessionID string, data interface{}) error {
 	// Additional session data validation with enhanced security checks
-	if entry.data == nil {
-		return nil, NewRBACError(ErrCodeInvalidSession, "Session data is corrupted", nil)
+	if data == nil {
+		return NewRBACError(ErrCodeInvalidSession, "Session data is corrupted", nil)
 	}
 
 	// Validate session data integrity if it's a map (common pattern)
-	if sessionMap, ok := entry.data.(map[string]interface{}); ok {
-		// Check for suspicious data patterns that might indicate tampering
-		if len(sessionMap) > 50 { // Reasonable limit for session data fields
-			s.logger.Warn("Session contains unusually large number of fields",
-				"sessionPrefix", sanitizeLogString(sessionID[:minInt(8, len(sessionID))])+"...",
-				"fieldCount", len(sessionMap))
-		}
-
-		// Validate critical session fields if they exist
-		if userContext, exists := sessionMap["userContext"]; exists && userContext == nil {
-			return nil, NewRBACError(ErrCodeInvalidSession, "Session user context is corrupted", nil)
-		}
+	if sessionMap, ok := data.(map[string]interface{}); ok {
+		return s.validateSessionMap(sessionID, sessionMap)
 	}
 
-	// Log session access with minimal information (security)
-	s.logger.Debug("Session retrieved successfully",
-		"sessionPrefix", sanitizeLogString(sessionID[:minInt(8, len(sessionID))])+"...",
-		"expiresIn", entry.expiresAt.Sub(now).String())
+	return nil
+}
 
-	return entry.data, nil
+// validateSessionMap validates session map structure and content
+func (s *MemorySessionStore) validateSessionMap(sessionID string, sessionMap map[string]interface{}) error {
+	// Check for suspicious data patterns that might indicate tampering
+	if len(sessionMap) > 50 { // Reasonable limit for session data fields
+		s.logger.Warn("Session contains unusually large number of fields",
+			"sessionPrefix", sanitizeLogString(sessionID[:minInt(8, len(sessionID))])+"...",
+			"fieldCount", len(sessionMap))
+	}
+
+	// Validate critical session fields if they exist
+	if userContext, exists := sessionMap["userContext"]; exists && userContext == nil {
+		return NewRBACError(ErrCodeInvalidSession, "Session user context is corrupted", nil)
+	}
+
+	return nil
 }
 
 // minInt returns the minimum of two integers

@@ -160,24 +160,60 @@ func (p *OktaAuthProvider) ExchangeCodeForToken(ctx context.Context, code string
 
 // ValidateJWT validates a JWT token and returns the claims with enhanced security
 func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) {
+	// Validate JWT input format and structure
+	if err := p.validateJWTInput(tokenString); err != nil {
+		return nil, err
+	}
+
+	// Parse and validate the JWT token with proper error handling
+	token, err := p.parseJWTToken(tokenString)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract and validate claims
+	claims, err := p.extractAndValidateClaims(token)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate claims timing and content
+	if err := p.validateClaimsContent(claims); err != nil {
+		return nil, err
+	}
+
+	p.logger.Debug("JWT validation successful",
+		"subject", sanitizeForLogging(claims.Subject),
+		"email", sanitizeForLogging(claims.Email),
+		"issuer", sanitizeForLogging(claims.Issuer))
+	return claims, nil
+}
+
+// validateJWTInput validates JWT input format and basic structure
+func (p *OktaAuthProvider) validateJWTInput(tokenString string) error {
 	// Enhanced input validation to prevent buffer overflow and injection attacks
 	if len(tokenString) == 0 {
-		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token cannot be empty", nil)
+		return NewRBACError(ErrCodeInvalidToken, "JWT token cannot be empty", nil)
 	}
 
 	// Limit JWT token size to prevent DoS attacks (8KB maximum)
 	if len(tokenString) > 8192 {
 		p.logger.Warn("JWT token exceeds maximum allowed size", "size", len(tokenString))
-		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token exceeds maximum allowed size", map[string]interface{}{
+		return NewRBACError(ErrCodeInvalidToken, "JWT token exceeds maximum allowed size", map[string]interface{}{
 			"maxSize":    8192,
 			"actualSize": len(tokenString),
 		})
 	}
 
+	return p.validateJWTStructure(tokenString)
+}
+
+// validateJWTStructure validates JWT token structure and format
+func (p *OktaAuthProvider) validateJWTStructure(tokenString string) error {
 	// Validate JWT format (basic structure check)
 	parts := strings.Split(tokenString, ".")
 	if len(parts) != 3 {
-		return nil, NewRBACError(ErrCodeInvalidToken, "Invalid JWT format: must have 3 parts separated by dots", map[string]interface{}{
+		return NewRBACError(ErrCodeInvalidToken, "Invalid JWT format: must have 3 parts separated by dots", map[string]interface{}{
 			"actualParts": len(parts),
 		})
 	}
@@ -187,34 +223,17 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 		if len(part) == 0 {
 			// Use safe string construction to prevent format string vulnerabilities
 			partNumber := convertIntToString(int64(i + 1))
-			return nil, NewRBACError(ErrCodeInvalidToken, "JWT part "+partNumber+" is empty", nil)
+			return NewRBACError(ErrCodeInvalidToken, "JWT part "+partNumber+" is empty", nil)
 		}
 	}
 
-	// Parse and validate the JWT token with proper error handling
+	return nil
+}
+
+// parseJWTToken parses the JWT token with algorithm validation
+func (p *OktaAuthProvider) parseJWTToken(tokenString string) (*jwt.Token, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &OktaClaims{}, func(token *jwt.Token) (interface{}, error) {
-		// Verify the signing method - only allow RSA
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			p.logger.Warn("Unexpected JWT signing method", "method", token.Header["alg"])
-			return nil, NewRBACError(ErrCodeInvalidToken, "Unexpected signing method", map[string]interface{}{
-				"method": token.Header["alg"],
-			})
-		}
-
-		// Additional algorithm validation
-		if alg, ok := token.Header["alg"].(string); ok {
-			if alg != "RS256" && alg != "RS384" && alg != "RS512" {
-				p.logger.Warn("Unsupported RSA algorithm", "algorithm", alg)
-				// Safe error construction to prevent format string vulnerabilities
-				errorMsg := "unsupported RSA algorithm: " + sanitizeErrorString(alg)
-				return nil, &RBACError{
-					Type:    "unsupported_algorithm",
-					Message: errorMsg,
-				}
-			}
-		}
-
-		return p.publicKey, nil
+		return p.validateSigningMethod(token)
 	})
 
 	if err != nil {
@@ -230,13 +249,44 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token is not valid", nil)
 	}
 
+	return token, nil
+}
+
+// validateSigningMethod validates JWT signing method and algorithm
+func (p *OktaAuthProvider) validateSigningMethod(token *jwt.Token) (interface{}, error) {
+	// Verify the signing method - only allow RSA
+	if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+		p.logger.Warn("Unexpected JWT signing method", "method", token.Header["alg"])
+		return nil, NewRBACError(ErrCodeInvalidToken, "Unexpected signing method", map[string]interface{}{
+			"method": token.Header["alg"],
+		})
+	}
+
+	// Additional algorithm validation
+	if alg, ok := token.Header["alg"].(string); ok {
+		if alg != "RS256" && alg != "RS384" && alg != "RS512" {
+			p.logger.Warn("Unsupported RSA algorithm", "algorithm", alg)
+			// Safe error construction to prevent format string vulnerabilities
+			errorMsg := "unsupported RSA algorithm: " + sanitizeErrorString(alg)
+			return nil, &RBACError{
+				Type:    "unsupported_algorithm",
+				Message: errorMsg,
+			}
+		}
+	}
+
+	return p.publicKey, nil
+}
+
+// extractAndValidateClaims extracts and validates JWT claims structure
+func (p *OktaAuthProvider) extractAndValidateClaims(token *jwt.Token) (*OktaClaims, error) {
 	claims, ok := token.Claims.(*OktaClaims)
 	if !ok {
 		p.logger.Error("Failed to extract JWT claims")
 		return nil, NewRBACError(ErrCodeInvalidToken, "Invalid JWT claims structure", nil)
 	}
 
-	// Additional claims validation
+	// Basic claims validation
 	if claims.Subject == "" {
 		return nil, NewRBACError(ErrCodeInvalidToken, "JWT claims missing required subject", nil)
 	}
@@ -245,9 +295,14 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 		return nil, NewRBACError(ErrCodeInvalidToken, "JWT claims missing required email", nil)
 	}
 
+	return claims, nil
+}
+
+// validateClaimsContent validates claims timing and expiration
+func (p *OktaAuthProvider) validateClaimsContent(claims *OktaClaims) error {
 	// Validate expiration time
 	if claims.ExpiresAt != 0 && time.Unix(claims.ExpiresAt, 0).Before(time.Now()) {
-		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token has expired", map[string]interface{}{
+		return NewRBACError(ErrCodeInvalidToken, "JWT token has expired", map[string]interface{}{
 			"expiredAt": time.Unix(claims.ExpiresAt, 0),
 			"now":       time.Now(),
 		})
@@ -255,17 +310,13 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 
 	// Validate issued at time (not too far in the future)
 	if claims.IssuedAt != 0 && time.Unix(claims.IssuedAt, 0).After(time.Now().Add(5*time.Minute)) {
-		return nil, NewRBACError(ErrCodeInvalidToken, "JWT token issued too far in the future", map[string]interface{}{
+		return NewRBACError(ErrCodeInvalidToken, "JWT token issued too far in the future", map[string]interface{}{
 			"issuedAt": time.Unix(claims.IssuedAt, 0),
 			"now":      time.Now(),
 		})
 	}
 
-	p.logger.Debug("JWT validation successful",
-		"subject", sanitizeForLogging(claims.Subject),
-		"email", sanitizeForLogging(claims.Email),
-		"issuer", sanitizeForLogging(claims.Issuer))
-	return claims, nil
+	return nil
 }
 
 // sanitizeErrorString safely sanitizes strings for use in error messages
@@ -291,6 +342,26 @@ func sanitizeErrorString(input string) string {
 
 // sanitizeDomainForURL safely validates and sanitizes domain names for URL construction
 func sanitizeDomainForURL(domain string) string {
+	// Validate basic domain requirements
+	if err := validateDomainBasics(domain); err != "" {
+		return err
+	}
+
+	// Validate domain character set
+	if err := validateDomainCharacters(domain); err != "" {
+		return err
+	}
+
+	// Validate domain format and security
+	if err := validateDomainSecurity(domain); err != "" {
+		return err
+	}
+
+	return domain
+}
+
+// validateDomainBasics validates basic domain requirements
+func validateDomainBasics(domain string) string {
 	if len(domain) == 0 {
 		return "invalid-domain"
 	}
@@ -300,16 +371,30 @@ func sanitizeDomainForURL(domain string) string {
 		return "invalid-domain-too-long"
 	}
 
+	return ""
+}
+
+// validateDomainCharacters validates domain character set
+func validateDomainCharacters(domain string) string {
 	// Basic domain validation - only allow alphanumeric, dots, and hyphens
 	for _, char := range domain {
-		if !((char >= 'a' && char <= 'z') ||
-			(char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') ||
-			char == '.' || char == '-') {
+		if !isValidDomainChar(char) {
 			return "invalid-domain-chars"
 		}
 	}
+	return ""
+}
 
+// isValidDomainChar checks if a character is valid for domain names
+func isValidDomainChar(char rune) bool {
+	return (char >= 'a' && char <= 'z') ||
+		(char >= 'A' && char <= 'Z') ||
+		(char >= '0' && char <= '9') ||
+		char == '.' || char == '-'
+}
+
+// validateDomainSecurity validates domain format for security
+func validateDomainSecurity(domain string) string {
 	// Additional security: prevent obvious injection attempts
 	if strings.Contains(domain, "..") ||
 		strings.Contains(domain, "//") ||
@@ -318,7 +403,7 @@ func sanitizeDomainForURL(domain string) string {
 		return "invalid-domain-format"
 	}
 
-	return domain
+	return ""
 }
 
 // MapGroupsToRoles maps Okta groups to Setagaya roles

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"golang.org/x/oauth2"
 )
 
 // OIDCHandler handles OIDC authentication flows
@@ -107,170 +108,227 @@ func (h *OIDCHandler) HandleLogin() httprouter.Handle {
 // HandleCallback handles the OIDC callback from Okta
 func (h *OIDCHandler) HandleCallback() httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		// Get state from query parameter with validation
-		stateParam := r.URL.Query().Get("state")
-		if stateParam == "" || len(stateParam) < 32 || len(stateParam) > 256 {
-			h.logger.Warn("Invalid state parameter in callback", "ip", r.RemoteAddr, "userAgent", r.UserAgent())
-			http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+		// Validate and process OAuth state
+		if err := h.validateOAuthState(w, r); err != nil {
 			return
 		}
 
-		// Get state from cookie
-		stateCookie, err := r.Cookie("oauth_state")
-		if err != nil || stateCookie.Value == "" {
-			h.logger.Warn("Missing or invalid state cookie in callback", "ip", r.RemoteAddr, "userAgent", r.UserAgent())
-			http.Error(w, "Missing state cookie", http.StatusBadRequest)
+		// Check for OAuth errors
+		if h.handleOAuthError(w, r) {
 			return
 		}
 
-		// Use constant-time comparison to prevent timing attacks
-		if !constantTimeStringEqual(stateParam, stateCookie.Value) {
-			h.logger.Warn("State parameter mismatch - possible CSRF attack", "ip", r.RemoteAddr, "userAgent", r.UserAgent())
-			http.Error(w, "Invalid state parameter", http.StatusBadRequest)
-			return
-		}
-
-		// Validate state exists in session
-		ctx := context.Background()
-		sessionID := "state_" + stateParam // Safe string concatenation
-		stateSessionData, err := h.sessionStore.Get(ctx, sessionID)
+		// Exchange authorization code for token
+		token, err := h.exchangeCodeForToken(w, r)
 		if err != nil {
-			h.logger.Warn("State not found in session or expired", "error", err, "ip", r.RemoteAddr)
-			http.Error(w, "Invalid or expired state", http.StatusBadRequest)
 			return
 		}
 
-		// Validate session data structure
-		sessionMap, ok := stateSessionData.(map[string]interface{})
-		if !ok {
-			h.logger.Error("Invalid session data format", "ip", r.RemoteAddr)
-			http.Error(w, "Invalid session", http.StatusInternalServerError)
-			return
-		}
-
-		// Validate IP consistency to prevent session hijacking
-		if sessionIP, exists := sessionMap["ip"]; exists {
-			if sessionIP != r.RemoteAddr {
-				h.logger.Warn("IP address mismatch in session", "sessionIP", sessionIP, "requestIP", r.RemoteAddr)
-				// Continue but log the potential security issue
-			}
-		}
-
-		// Clean up state session immediately
-		if err := h.sessionStore.Delete(ctx, sessionID); err != nil {
-			h.logger.Warn("Failed to delete session", "error", err)
-		}
-
-		// Clear state cookie immediately
-		http.SetCookie(w, &http.Cookie{
-			Name:     "oauth_state",
-			Value:    "",
-			Path:     "/",
-			MaxAge:   -1,
-			Secure:   true,
-			HttpOnly: true,
-		})
-
-		// Get authorization code with validation
-		code := r.URL.Query().Get("code")
-		if code == "" || len(code) > 512 {
-			h.logger.Warn("Missing or invalid authorization code in callback", "ip", r.RemoteAddr)
-			http.Error(w, "Missing authorization code", http.StatusBadRequest)
-			return
-		}
-
-		// Check for error parameter
-		if errorCode := r.URL.Query().Get("error"); errorCode != "" {
-			errorDesc := r.URL.Query().Get("error_description")
-			h.logger.Warn("OAuth error in callback", "error", errorCode, "description", errorDesc, "ip", r.RemoteAddr)
-
-			// Comprehensive sanitization to prevent XSS and format string attacks
-			safeErrorCode := sanitizeForOAuth(errorCode)
-			safeErrorDesc := sanitizeForOAuth(errorDesc)
-
-			// Use safe error message construction without format strings
-			errorMessage := "OAuth error: " + safeErrorCode
-			if safeErrorDesc != "" {
-				errorMessage += " - " + safeErrorDesc
-			}
-
-			http.Error(w, errorMessage, http.StatusBadRequest)
-			return
-		}
-
-		// Exchange code for token
-		token, err := h.authProvider.ExchangeCodeForToken(ctx, code)
+		// Validate and extract user claims
+		claims, err := h.validateTokenAndExtractClaims(w, r, token)
 		if err != nil {
-			h.logger.Error("Failed to exchange code for token", "error", err, "ip", r.RemoteAddr)
-			http.Error(w, "Token exchange failed", http.StatusInternalServerError)
 			return
 		}
 
-		// Extract and validate ID token
-		idToken, ok := token.Extra("id_token").(string)
-		if !ok {
-			h.logger.Error("No ID token in response", "ip", r.RemoteAddr)
-			http.Error(w, "No ID token received", http.StatusInternalServerError)
+		// Create and store user session
+		if err := h.createUserSession(w, r, token, claims); err != nil {
 			return
 		}
-
-		// Validate JWT and extract claims
-		claims, err := h.authProvider.ValidateJWT(idToken)
-		if err != nil {
-			h.logger.Error("Failed to validate ID token", "error", err, "ip", r.RemoteAddr)
-			http.Error(w, "Invalid ID token", http.StatusUnauthorized)
-			return
-		}
-
-		// Create user context
-		userContext := h.authProvider.CreateUserContext(claims)
-
-		// Create user session
-		userSessionID, err := h.generateSessionID()
-		if err != nil {
-			h.logger.Error("Failed to generate session ID", "error", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		// Store user session with security enhancements
-		sessionData := map[string]interface{}{
-			"userContext":  userContext,
-			"accessToken":  token.AccessToken,
-			"refreshToken": token.RefreshToken,
-			"idToken":      idToken,
-			"loginTime":    time.Now(),
-			"ip":           r.RemoteAddr,
-			"userAgent":    r.UserAgent(),
-		}
-
-		err = h.sessionStore.Set(ctx, userSessionID, sessionData, 2*time.Hour)
-		if err != nil {
-			h.logger.Error("Failed to store user session", "error", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		// Set secure session cookie with enhanced security
-		http.SetCookie(w, &http.Cookie{
-			Name:     "session_id",
-			Value:    userSessionID,
-			Path:     "/",
-			MaxAge:   7200, // 2 hours
-			Secure:   true,
-			HttpOnly: true,
-			SameSite: http.SameSiteStrictMode, // Use strict mode for session cookies
-		})
 
 		h.logger.Info("OIDC login successful",
-			"userID", userContext.UserID,
-			"email", userContext.Email,
+			"userID", claims.Subject,
+			"email", claims.Email,
 			"ip", r.RemoteAddr)
 
 		// Redirect to application
 		redirectURL := h.baseURL + "/dashboard"
 		http.Redirect(w, r, redirectURL, http.StatusFound)
 	}
+}
+
+// validateOAuthState validates state parameter and CSRF protection
+func (h *OIDCHandler) validateOAuthState(w http.ResponseWriter, r *http.Request) error {
+	// Get state from query parameter with validation
+	stateParam := r.URL.Query().Get("state")
+	if stateParam == "" || len(stateParam) < 32 || len(stateParam) > 256 {
+		h.logger.Warn("Invalid state parameter in callback", "ip", r.RemoteAddr, "userAgent", r.UserAgent())
+		http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+		return NewRBACError(ErrCodeInvalidSession, "Invalid state parameter", nil)
+	}
+
+	// Get state from cookie
+	stateCookie, err := r.Cookie("oauth_state")
+	if err != nil || stateCookie.Value == "" {
+		h.logger.Warn("Missing or invalid state cookie in callback", "ip", r.RemoteAddr, "userAgent", r.UserAgent())
+		http.Error(w, "Missing state cookie", http.StatusBadRequest)
+		return NewRBACError(ErrCodeInvalidSession, "Missing state cookie", nil)
+	}
+
+	// Use constant-time comparison to prevent timing attacks
+	if !constantTimeStringEqual(stateParam, stateCookie.Value) {
+		h.logger.Warn("State parameter mismatch - possible CSRF attack", "ip", r.RemoteAddr, "userAgent", r.UserAgent())
+		http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+		return NewRBACError(ErrCodeInvalidSession, "State mismatch", nil)
+	}
+
+	return h.validateAndCleanupSessionState(stateParam, r)
+}
+
+// validateAndCleanupSessionState validates session state and cleans up
+func (h *OIDCHandler) validateAndCleanupSessionState(stateParam string, r *http.Request) error {
+	// Validate state exists in session
+	ctx := context.Background()
+	sessionID := "state_" + stateParam // Safe string concatenation
+	stateSessionData, err := h.sessionStore.Get(ctx, sessionID)
+	if err != nil {
+		h.logger.Warn("State not found in session or expired", "error", err, "ip", r.RemoteAddr)
+		return NewRBACError(ErrCodeSessionNotFound, "State not found", nil)
+	}
+
+	// Validate session data structure
+	sessionMap, ok := stateSessionData.(map[string]interface{})
+	if !ok {
+		h.logger.Error("Invalid session data format", "ip", r.RemoteAddr)
+		return NewRBACError(ErrCodeInvalidSession, "Invalid session format", nil)
+	}
+
+	// Validate IP consistency to prevent session hijacking
+	if sessionIP, exists := sessionMap["ip"]; exists {
+		if sessionIP != r.RemoteAddr {
+			h.logger.Warn("IP address mismatch in session", "sessionIP", sessionIP, "requestIP", r.RemoteAddr)
+			// Continue but log the potential security issue
+		}
+	}
+
+	// Clean up state session immediately
+	if err := h.sessionStore.Delete(ctx, sessionID); err != nil {
+		h.logger.Warn("Failed to delete session", "error", err)
+	}
+
+	return nil
+}
+
+// handleOAuthError checks for and handles OAuth error responses
+func (h *OIDCHandler) handleOAuthError(w http.ResponseWriter, r *http.Request) bool {
+	// Check for error parameter
+	if errorCode := r.URL.Query().Get("error"); errorCode != "" {
+		errorDesc := r.URL.Query().Get("error_description")
+		h.logger.Warn("OAuth error in callback", "error", errorCode, "description", errorDesc, "ip", r.RemoteAddr)
+
+		// Comprehensive sanitization to prevent XSS and format string attacks
+		safeErrorCode := sanitizeForOAuth(errorCode)
+		safeErrorDesc := sanitizeForOAuth(errorDesc)
+
+		// Use safe error message construction without format strings
+		errorMessage := "OAuth error: " + safeErrorCode
+		if safeErrorDesc != "" {
+			errorMessage += " - " + safeErrorDesc
+		}
+
+		http.Error(w, errorMessage, http.StatusBadRequest)
+		return true
+	}
+
+	// Clear state cookie immediately after validation
+	http.SetCookie(w, &http.Cookie{
+		Name:     "oauth_state",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   true,
+		HttpOnly: true,
+	})
+
+	return false
+}
+
+// exchangeCodeForToken validates authorization code and exchanges for token
+func (h *OIDCHandler) exchangeCodeForToken(w http.ResponseWriter, r *http.Request) (*oauth2.Token, error) {
+	// Get authorization code with validation
+	code := r.URL.Query().Get("code")
+	if code == "" || len(code) > 512 {
+		h.logger.Warn("Missing or invalid authorization code in callback", "ip", r.RemoteAddr)
+		http.Error(w, "Missing authorization code", http.StatusBadRequest)
+		return nil, NewRBACError(ErrCodeInvalidToken, "Invalid authorization code", nil)
+	}
+
+	// Exchange code for token
+	ctx := context.Background()
+	token, err := h.authProvider.ExchangeCodeForToken(ctx, code)
+	if err != nil {
+		h.logger.Error("Failed to exchange code for token", "error", err, "ip", r.RemoteAddr)
+		http.Error(w, "Token exchange failed", http.StatusInternalServerError)
+		return nil, err
+	}
+
+	return token, nil
+}
+
+// validateTokenAndExtractClaims validates ID token and extracts claims
+func (h *OIDCHandler) validateTokenAndExtractClaims(w http.ResponseWriter, r *http.Request, token *oauth2.Token) (*OktaClaims, error) {
+	// Extract and validate ID token
+	idToken, ok := token.Extra("id_token").(string)
+	if !ok {
+		h.logger.Error("No ID token in response", "ip", r.RemoteAddr)
+		http.Error(w, "No ID token received", http.StatusInternalServerError)
+		return nil, NewRBACError(ErrCodeInvalidToken, "No ID token", nil)
+	}
+
+	// Validate JWT and extract claims
+	claims, err := h.authProvider.ValidateJWT(idToken)
+	if err != nil {
+		h.logger.Error("Failed to validate ID token", "error", err, "ip", r.RemoteAddr)
+		http.Error(w, "Invalid ID token", http.StatusUnauthorized)
+		return nil, err
+	}
+
+	return claims, nil
+}
+
+// createUserSession creates and stores user session with security enhancements
+func (h *OIDCHandler) createUserSession(w http.ResponseWriter, r *http.Request, token *oauth2.Token, claims *OktaClaims) error {
+	// Create user context
+	userContext := h.authProvider.CreateUserContext(claims)
+
+	// Create user session
+	userSessionID, err := h.generateSessionID()
+	if err != nil {
+		h.logger.Error("Failed to generate session ID", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return err
+	}
+
+	// Store user session with security enhancements
+	sessionData := map[string]interface{}{
+		"userContext":  userContext,
+		"accessToken":  token.AccessToken,
+		"refreshToken": token.RefreshToken,
+		"idToken":      token.Extra("id_token"),
+		"loginTime":    time.Now(),
+		"ip":           r.RemoteAddr,
+		"userAgent":    r.UserAgent(),
+	}
+
+	ctx := context.Background()
+	err = h.sessionStore.Set(ctx, userSessionID, sessionData, 2*time.Hour)
+	if err != nil {
+		h.logger.Error("Failed to store user session", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return err
+	}
+
+	// Set secure session cookie with enhanced security
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_id",
+		Value:    userSessionID,
+		Path:     "/",
+		MaxAge:   7200, // 2 hours
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode, // Use strict mode for session cookies
+	})
+
+	return nil
 }
 
 // HandleLogout handles user logout

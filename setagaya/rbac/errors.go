@@ -174,7 +174,7 @@ func sanitizeErrorType(errorType string) string {
 	// Use strings.Builder for efficient string building
 	var builder strings.Builder
 	builder.Grow(len(errorType)) // Pre-allocate capacity for efficiency
-	
+
 	// Only allow alphanumeric and underscores for error types
 	for _, char := range errorType {
 		if (char >= 'a' && char <= 'z') ||
@@ -184,7 +184,7 @@ func sanitizeErrorType(errorType string) string {
 			builder.WriteRune(char)
 		}
 	}
-	
+
 	sanitized := builder.String()
 
 	// Limit length
@@ -230,7 +230,7 @@ func sanitizeErrorInput(input string) string {
 	// Use strings.Builder for efficient string building
 	var builder strings.Builder
 	builder.Grow(len(input)) // Pre-allocate capacity for efficiency
-	
+
 	// Very strict sanitization for user inputs in error messages
 	for _, char := range input {
 		if (char >= 'a' && char <= 'z') ||
@@ -240,7 +240,7 @@ func sanitizeErrorInput(input string) string {
 			builder.WriteRune(char)
 		}
 	}
-	
+
 	sanitized := builder.String()
 
 	// Limit length

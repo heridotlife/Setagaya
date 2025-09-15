@@ -214,10 +214,23 @@ func convertToString(value interface{}) string {
 	case error:
 		return v.Error()
 	case bool:
-		if v {
-			return "true"
-		}
-		return "false"
+		return convertBoolToString(v)
+	default:
+		return convertNumericToString(v)
+	}
+}
+
+// convertBoolToString converts boolean to string representation
+func convertBoolToString(v bool) string {
+	if v {
+		return "true"
+	}
+	return "false"
+}
+
+// convertNumericToString handles all numeric type conversions
+func convertNumericToString(value interface{}) string {
+	switch v := value.(type) {
 	case int:
 		return convertIntToString(int64(v))
 	case int8:
@@ -228,12 +241,16 @@ func convertToString(value interface{}) string {
 		return convertIntToString(int64(v))
 	case int64:
 		return convertIntToString(v)
+	default:
+		return convertUnsignedToString(value)
+	}
+}
+
+// convertUnsignedToString handles unsigned integer type conversions
+func convertUnsignedToString(value interface{}) string {
+	switch v := value.(type) {
 	case uint:
-		// Check for overflow before conversion
-		if v > 9223372036854775807 { // math.MaxInt64
-			return "large_uint"
-		}
-		return convertIntToString(int64(v))
+		return convertUintToString(uint64(v))
 	case uint8:
 		return convertIntToString(int64(v))
 	case uint16:
@@ -241,16 +258,24 @@ func convertToString(value interface{}) string {
 	case uint32:
 		return convertIntToString(int64(v))
 	case uint64:
-		// Check for overflow before conversion
-		if v > 9223372036854775807 { // math.MaxInt64
-			return "large_uint64"
-		}
-		return convertIntToString(int64(v))
+		return convertUintToString(v)
 	case float32, float64:
 		return "number"
 	default:
 		return "object"
 	}
+}
+
+// convertUintToString safely converts uint64 to string with overflow checking
+func convertUintToString(v uint64) string {
+	// Check for overflow before conversion
+	if v > 9223372036854775807 { // math.MaxInt64
+		if v <= 18446744073709551615 { // math.MaxUint64
+			return "large_uint64"
+		}
+		return "large_uint"
+	}
+	return convertIntToString(int64(v))
 }
 
 // convertIntToString safely converts int64 to string without fmt.Sprintf
