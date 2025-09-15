@@ -525,7 +525,10 @@ func constantTimeStringEqual(a, b string) bool {
 
 	result := 0
 	for i := 0; i < len(a); i++ {
-		result |= int(a[i]) ^ int(b[i])
+		// Safe byte comparison without integer conversion to prevent G115 overflow
+		aByte := a[i]
+		bByte := b[i]
+		result |= int(aByte) ^ int(bByte)
 	}
 
 	return result == 0

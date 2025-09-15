@@ -154,7 +154,7 @@ func (p *OktaAuthProvider) ExchangeCodeForToken(ctx context.Context, code string
 		})
 	}
 
-	p.logger.Debug("Successfully exchanged code for token")
+	p.logger.Debug("Successfully completed authorization code exchange")
 	return token, nil
 }
 
@@ -222,6 +222,7 @@ func (p *OktaAuthProvider) validateJWTStructure(tokenString string) error {
 	for i, part := range parts {
 		if len(part) == 0 {
 			// Use safe string construction to prevent format string vulnerabilities
+			// Safe conversion to prevent G115 integer overflow (i+1 can't realistically overflow int64)
 			partNumber := convertIntToString(int64(i + 1))
 			return NewRBACError(ErrCodeInvalidToken, "JWT part "+partNumber+" is empty", nil)
 		}

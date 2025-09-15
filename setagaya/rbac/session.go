@@ -191,8 +191,8 @@ func (s *MemorySessionStore) validateSessionIDCharacters(sessionID string) error
 
 // getSessionEntry retrieves session entry with expiration checking
 func (s *MemorySessionStore) getSessionEntry(sessionID string) (*sessionEntry, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	entry, exists := s.sessions[sessionID]
 	if !exists {
@@ -203,13 +203,8 @@ func (s *MemorySessionStore) getSessionEntry(sessionID string) (*sessionEntry, e
 	// Check expiration with proper time handling
 	now := time.Now()
 	if now.After(entry.expiresAt) {
-		// Remove expired session immediately
-		s.mu.RUnlock()
-		s.mu.Lock()
+		// Remove expired session immediately with single lock
 		delete(s.sessions, sessionID)
-		s.mu.Unlock()
-		s.mu.RLock()
-
 		return nil, NewRBACError(ErrCodeSessionExpired, "Session has expired", map[string]interface{}{
 			"expiredAt":   entry.expiresAt,
 			"currentTime": now,
