@@ -171,10 +171,10 @@ func (s *MemorySessionStore) validateSessionIDCharacters(sessionID string) error
 	// Use constant-time validation to prevent timing attacks
 	invalidCharFound := false
 	for _, char := range sessionID {
-		if !((char >= 'a' && char <= 'z') ||
-			(char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') ||
-			char == '_' || char == '-' || char == '=') {
+		if (char < 'a' || char > 'z') &&
+			(char < 'A' || char > 'Z') &&
+			(char < '0' || char > '9') &&
+			char != '_' && char != '-' && char != '=' {
 			invalidCharFound = true
 			// Continue checking all characters to prevent timing attacks
 		}
