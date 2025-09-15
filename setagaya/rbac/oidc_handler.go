@@ -213,11 +213,11 @@ func (h *OIDCHandler) handleOAuthError(w http.ResponseWriter, r *http.Request) b
 	// Check for error parameter
 	if errorCode := r.URL.Query().Get("error"); errorCode != "" {
 		errorDesc := r.URL.Query().Get("error_description")
-		h.logger.Warn("OAuth error in callback", "error", errorCode, "description", errorDesc, "ip", r.RemoteAddr)
+		safeErrorCode := sanitizeForLog(errorCode)
+		safeErrorDesc := sanitizeForLog(errorDesc)
+		h.logger.Warn("OAuth error in callback", "error", safeErrorCode, "description", safeErrorDesc, "ip", r.RemoteAddr)
 
 		// Comprehensive sanitization to prevent XSS and format string attacks
-		safeErrorCode := sanitizeForOAuth(errorCode)
-		safeErrorDesc := sanitizeForOAuth(errorDesc)
 
 		// Use safe error message construction without format strings
 		errorMessage := "OAuth error: " + safeErrorCode
@@ -240,6 +240,13 @@ func (h *OIDCHandler) handleOAuthError(w http.ResponseWriter, r *http.Request) b
 	})
 
 	return false
+// sanitizeForLog removes newline and carriage return characters to prevent log injection.
+func sanitizeForLog(input string) string {
+	s := strings.ReplaceAll(input, "\n", "")
+	s = strings.ReplaceAll(s, "\r", "")
+	return s
+}
+
 }
 
 // exchangeCodeForToken validates authorization code and exchanges for token
