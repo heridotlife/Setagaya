@@ -1,4 +1,4 @@
-personal_ws-1.1 en 758
+personal_ws-1.1 en 744
 codecov
 OpenSSF
 Setagaya
@@ -738,3 +738,8 @@ HasProjectOwnership
 enablement
 RoleRepository
 UserRoleRepository
+Grype
+anchore
+spdx
+ToolName
+TestTool

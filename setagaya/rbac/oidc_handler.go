@@ -213,11 +213,11 @@ func (h *OIDCHandler) handleOAuthError(w http.ResponseWriter, r *http.Request) b
 	// Check for error parameter
 	if errorCode := r.URL.Query().Get("error"); errorCode != "" {
 		errorDesc := r.URL.Query().Get("error_description")
-		h.logger.Warn("OAuth error in callback", "error", errorCode, "description", errorDesc, "ip", r.RemoteAddr)
+		safeErrorCode := sanitizeForLog(errorCode)
+		safeErrorDesc := sanitizeForLog(errorDesc)
+		h.logger.Warn("OAuth error in callback", "error", safeErrorCode, "description", safeErrorDesc, "ip", r.RemoteAddr)
 
 		// Comprehensive sanitization to prevent XSS and format string attacks
-		safeErrorCode := sanitizeForOAuth(errorCode)
-		safeErrorDesc := sanitizeForOAuth(errorDesc)
 
 		// Use safe error message construction without format strings
 		errorMessage := "OAuth error: " + safeErrorCode
@@ -240,6 +240,13 @@ func (h *OIDCHandler) handleOAuthError(w http.ResponseWriter, r *http.Request) b
 	})
 
 	return false
+}
+
+// sanitizeForLog removes newline and carriage return characters to prevent log injection.
+func sanitizeForLog(input string) string {
+	s := strings.ReplaceAll(input, "\n", "")
+	s = strings.ReplaceAll(s, "\r", "")
+	return s
 }
 
 // exchangeCodeForToken validates authorization code and exchanges for token
@@ -532,30 +539,6 @@ func constantTimeStringEqual(a, b string) bool {
 	}
 
 	return result == 0
-}
-
-// sanitizeForOAuth safely sanitizes OAuth error messages to prevent XSS and injection
-func sanitizeForOAuth(input string) string {
-	if len(input) == 0 {
-		return ""
-	}
-
-	// Replace dangerous characters
-	sanitized := strings.ReplaceAll(input, "<", "&lt;")
-	sanitized = strings.ReplaceAll(sanitized, ">", "&gt;")
-	sanitized = strings.ReplaceAll(sanitized, `"`, "&quot;")
-	sanitized = strings.ReplaceAll(sanitized, `'`, "&#x27;")
-	sanitized = strings.ReplaceAll(sanitized, "&", "&amp;")
-	sanitized = strings.ReplaceAll(sanitized, "\n", " ")
-	sanitized = strings.ReplaceAll(sanitized, "\r", " ")
-	sanitized = strings.ReplaceAll(sanitized, "\t", " ")
-
-	// Limit length to prevent buffer overflow
-	if len(sanitized) > 200 {
-		sanitized = sanitized[:197] + "..."
-	}
-
-	return sanitized
 }
 
 // sanitizeForJSONStrict provides strict sanitization for JSON values to prevent injection

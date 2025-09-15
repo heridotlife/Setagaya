@@ -385,6 +385,23 @@ jobs:
         sarif_file: 'trivy-${{ matrix.name }}.sarif'
         category: 'docker-${{ matrix.name }}'
 
+    - name: Run Grype vulnerability scanner - ${{ matrix.name }}
+      uses: anchore/scan-action@v6
+      continue-on-error: true
+      with:
+        image: '${{ matrix.name }}:security-test'
+        output-format: sarif
+        output-file: 'grype-${{ matrix.name }}.sarif'
+        severity-cutoff: medium
+        fail-build: false
+
+    - name: Upload Grype scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always() && hashFiles('grype-${{ matrix.name }}.sarif') != ''
+      with:
+        sarif_file: 'grype-${{ matrix.name }}.sarif'
+        category: 'grype-${{ matrix.name }}'
+
     # Enhanced reporting for critical images
     - name: Generate Security Summary for Critical Images
       if: matrix.critical == true && always()
@@ -393,18 +410,54 @@ jobs:
         echo "Image: \`${{ matrix.name }}:security-test\`" >> $GITHUB_STEP_SUMMARY
         echo "Dockerfile: \`${{ matrix.dockerfile }}\`" >> $GITHUB_STEP_SUMMARY
 
+        # Trivy results
         if [ -f "trivy-${{ matrix.name }}.sarif" ]; then
-          CRITICAL=$(grep -o '"level":"error"' trivy-${{ matrix.name }}.sarif | wc -l || echo "0")
-          HIGH=$(grep -o '"level":"warning"' trivy-${{ matrix.name }}.sarif | wc -l || echo "0")
+          CRITICAL_TRIVY=$(grep -o '"level":"error"' trivy-${{ matrix.name }}.sarif | wc -l || echo "0")
+          HIGH_TRIVY=$(grep -o '"level":"warning"' trivy-${{ matrix.name }}.sarif | wc -l || echo "0")
 
-          echo "- 🔴 Critical: $CRITICAL" >> $GITHUB_STEP_SUMMARY
-          echo "- 🟡 High: $HIGH" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 Trivy Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔴 Critical: $CRITICAL_TRIVY" >> $GITHUB_STEP_SUMMARY
+          echo "- 🟡 High: $HIGH_TRIVY" >> $GITHUB_STEP_SUMMARY
 
-          if [ "$CRITICAL" -gt "0" ]; then
-            echo "⚠️ **Critical vulnerabilities found!**" >> $GITHUB_STEP_SUMMARY
+          if [ "$CRITICAL_TRIVY" -gt "0" ]; then
+            echo "⚠️ **Critical vulnerabilities found in Trivy scan!**" >> $GITHUB_STEP_SUMMARY
           fi
         else
-          echo "✅ No SARIF file generated (no vulnerabilities or scan failed)" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 Trivy Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ No Trivy SARIF file generated" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        # Grype results
+        if [ -f "grype-${{ matrix.name }}.sarif" ]; then
+          CRITICAL_GRYPE=$(grep -o '"level":"error"' grype-${{ matrix.name }}.sarif | wc -l || echo "0")
+          HIGH_GRYPE=$(grep -o '"level":"warning"' grype-${{ matrix.name }}.sarif | wc -l || echo "0")
+
+          echo "### 🐍 Grype Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔴 Critical: $CRITICAL_GRYPE" >> $GITHUB_STEP_SUMMARY
+          echo "- 🟡 High: $HIGH_GRYPE" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$CRITICAL_GRYPE" -gt "0" ]; then
+            echo "⚠️ **Critical vulnerabilities found in Grype scan!**" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "### 🐍 Grype Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ No Grype SARIF file generated" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        # Combined summary
+        TOTAL_CRITICAL=$((${CRITICAL_TRIVY:-0} + ${CRITICAL_GRYPE:-0}))
+        TOTAL_HIGH=$((${HIGH_TRIVY:-0} + ${HIGH_GRYPE:-0}))
+        
+        echo "### 📊 Combined Results" >> $GITHUB_STEP_SUMMARY
+        echo "- 🔴 Total Critical: $TOTAL_CRITICAL" >> $GITHUB_STEP_SUMMARY
+        echo "- 🟡 Total High: $TOTAL_HIGH" >> $GITHUB_STEP_SUMMARY
+
+        if [ "$TOTAL_CRITICAL" -gt "0" ]; then
+          echo "🚨 **Action Required: Critical vulnerabilities detected!**" >> $GITHUB_STEP_SUMMARY
+        elif [ "$TOTAL_HIGH" -gt "10" ]; then
+          echo "⚠️ **Review Recommended: High number of high-severity vulnerabilities**" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "✅ **Security Status: Acceptable vulnerability levels**" >> $GITHUB_STEP_SUMMARY
         fi
 
   # Secret scanning
