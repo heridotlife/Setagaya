@@ -240,13 +240,13 @@ func (h *OIDCHandler) handleOAuthError(w http.ResponseWriter, r *http.Request) b
 	})
 
 	return false
+}
+
 // sanitizeForLog removes newline and carriage return characters to prevent log injection.
 func sanitizeForLog(input string) string {
 	s := strings.ReplaceAll(input, "\n", "")
 	s = strings.ReplaceAll(s, "\r", "")
 	return s
-}
-
 }
 
 // exchangeCodeForToken validates authorization code and exchanges for token
