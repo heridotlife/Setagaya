@@ -31,7 +31,9 @@ func TestCreateAndGetCollection(t *testing.T) {
 	assert.Equal(t, name, c.Name)
 	assert.Equal(t, projectID, c.ProjectID)
 
-	c.Delete()
+	if err := c.Delete(); err != nil {
+		t.Logf("Error deleting collection: %v", err)
+	}
 	c, err = GetCollection(collectionID)
 	assert.NotNil(t, err)
 	assert.Nil(t, c)
@@ -81,14 +83,18 @@ func TestAddPlanAndGet(t *testing.T) {
 	}
 
 	ep.Duration = 2
-	c.AddExecutionPlan(ep)
+	if err := c.AddExecutionPlan(ep); err != nil {
+		t.Logf("Error adding execution plan: %v", err)
+	}
 	eps, err = c.GetExecutionPlans()
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.Equal(t, eps[0].Duration, 2)
 
-	c.DeleteExecutionPlan(c.ID, planID)
+	if err := c.DeleteExecutionPlan(c.ID, planID); err != nil {
+		t.Logf("Error deleting execution plan: %v", err)
+	}
 	using, _ = plan.IsBeingUsed()
 	assert.Equal(t, using, false)
 	eps, _ = c.GetExecutionPlans()

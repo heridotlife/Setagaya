@@ -177,7 +177,7 @@ func TestRetryWithNilExemptError(t *testing.T) {
 func TestRetryWithPanic(t *testing.T) {
 	// Test that if the function panics, it's not caught by retry
 	assert.Panics(t, func() {
-		Retry(func() error {
+		_ = Retry(func() error {
 			panic("test panic")
 		}, nil)
 	})

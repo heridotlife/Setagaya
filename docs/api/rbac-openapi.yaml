@@ -1,0 +1,1039 @@
+openapi: 3.0.3
+info:
+  title: Setagaya RBAC API
+  description: |
+    Role-Based Access Control API for Setagaya Load Testing Platform.
+
+    This API provides comprehensive tenant management, user authorization,
+    and audit capabilities for multi-tenant load testing environments.
+
+    ## Authentication
+    All endpoints require JWT authentication via Okta OIDC integration.
+    Include the JWT token in the Authorization header:
+    `Authorization: Bearer <your-jwt-token>`
+
+    ## Authorization
+    Access to resources is controlled by role-based permissions:
+    - **Service Provider Admin**: Global access to all tenants and resources
+    - **Service Provider Support**: Read-only access for support operations
+    - **Tenant Admin**: Full access within assigned tenant(s)
+    - **Tenant Editor**: Create/edit resources within assigned tenant(s)
+    - **Tenant Viewer**: Read-only access within assigned tenant(s)
+    - **PJM Loadtest**: Project manager access for load testing operations
+
+    ## Rate Limiting
+    API requests are rate limited to 1000 requests per hour per user.
+    Rate limit headers are included in all responses.
+
+  version: 1.0.0
+  contact:
+    name: Setagaya Platform Team
+    email: platform-team@company.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://setagaya.company.com/api/v1
+    description: Production server
+  - url: https://setagaya-staging.company.com/api/v1
+    description: Staging server
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+
+security:
+  - BearerAuth: []
+
+paths:
+  /auth/login:
+    get:
+      summary: Initiate Okta OIDC login
+      description: Redirect user to Okta for authentication
+      tags: [Authentication]
+      security: []
+      responses:
+        '302':
+          description: Redirect to Okta login
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Okta authorization URL
+
+  /auth/callback:
+    get:
+      summary: Handle Okta OIDC callback
+      description: Process authentication callback from Okta
+      tags: [Authentication]
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /auth/me:
+    get:
+      summary: Get current user context
+      description: |
+        Retrieve information about the currently authenticated user,
+        including their tenants, roles, and permissions.
+      tags: [Authentication]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Current user context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserContext'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tenants:
+    get:
+      summary: List tenants
+      description: |
+        Retrieve list of tenants based on user permissions:
+        - Service Provider Admins see all tenants
+        - Other users see only tenants they have access to
+      tags: [Tenant Management]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Filter tenants by status
+          schema:
+            type: string
+            enum: [ACTIVE, SUSPENDED, DELETED]
+        - name: limit
+          in: query
+          description: Maximum number of tenants to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of tenants to skip for pagination
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of tenants
+          headers:
+            X-Total-Count:
+              description: Total number of tenants matching criteria
+              schema:
+                type: integer
+            X-Rate-Limit-Remaining:
+              description: Number of requests remaining in rate limit window
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenants:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tenant'
+                  total:
+                    type: integer
+                    description: Total number of matching tenants
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      summary: Create new tenant
+      description: |
+        Create a new tenant in the system. Only Service Provider Admins
+        can create tenants. The Okta group prefix must be unique and follow
+        the naming convention 'setagaya-{tenant-name}'.
+      tags: [Tenant Management]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenantRequest'
+            examples:
+              basic_tenant:
+                summary: Basic tenant creation
+                value:
+                  name: "acme-corp"
+                  display_name: "ACME Corporation"
+                  okta_group_prefix: "setagaya-acme-corp"
+              tenant_with_metadata:
+                summary: Tenant with custom metadata
+                value:
+                  name: "tech-startup"
+                  display_name: "Tech Startup Inc"
+                  okta_group_prefix: "setagaya-tech-startup"
+                  metadata:
+                    industry: "technology"
+                    region: "us-west"
+                    tier: "premium"
+      responses:
+        '201':
+          description: Tenant created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid_name:
+                  summary: Invalid tenant name
+                  value:
+                    error: "validation_error"
+                    message: "Tenant name must contain only lowercase letters, numbers, and hyphens"
+                    details:
+                      field: "name"
+                      value: "Invalid Name!"
+                duplicate_name:
+                  summary: Duplicate tenant name
+                  value:
+                    error: "conflict"
+                    message: "Tenant with this name already exists"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tenants/{tenantId}:
+    get:
+      summary: Get tenant details
+      description: Retrieve detailed information about a specific tenant
+      tags: [Tenant Management]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          description: Unique identifier for the tenant
+          schema:
+            type: integer
+            format: int64
+            example: 123
+      responses:
+        '200':
+          description: Tenant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "not_found"
+                message: "Tenant with ID 123 not found"
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      summary: Update tenant
+      description: |
+        Update tenant information. Only Service Provider Admins and
+        Tenant Admins can update tenant details.
+      tags: [Tenant Management]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTenantRequest'
+            examples:
+              update_display_name:
+                summary: Update display name
+                value:
+                  display_name: "ACME Corporation Ltd"
+              suspend_tenant:
+                summary: Suspend tenant
+                value:
+                  status: "SUSPENDED"
+                  metadata:
+                    suspension_reason: "Payment overdue"
+      responses:
+        '200':
+          description: Tenant updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      summary: Delete tenant
+      description: |
+        Soft delete a tenant by marking it as DELETED status.
+        Only Service Provider Admins can delete tenants.
+        This operation is irreversible and will clean up all associated resources.
+      tags: [Tenant Management]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Tenant deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot delete tenant with active resources
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "conflict"
+                message: "Cannot delete tenant with active projects or running tests"
+                details:
+                  active_projects: 5
+                  running_collections: 2
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tenants/{tenantId}/users:
+    get:
+      summary: List tenant users
+      description: |
+        List all users assigned to a tenant with their roles.
+        Accessible by Service Provider Admins and Tenant Admins.
+      tags: [User Management]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: role
+          in: query
+          description: Filter users by role
+          schema:
+            type: string
+            enum: [tenant_admin, tenant_editor, tenant_viewer, pjm_loadtest]
+      responses:
+        '200':
+          description: List of tenant users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TenantUserAssignment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      summary: Assign user to tenant
+      description: |
+        Assign a user to a tenant with a specific role.
+        The user must exist in Okta and be a member of the appropriate Okta group.
+      tags: [User Management]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantUserAssignment'
+            examples:
+              assign_admin:
+                summary: Assign tenant admin
+                value:
+                  user_id: "admin@acme-corp.com"
+                  role_name: "tenant_admin"
+              assign_editor:
+                summary: Assign tenant editor
+                value:
+                  user_id: "developer@acme-corp.com"
+                  role_name: "tenant_editor"
+      responses:
+        '201':
+          description: User assigned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantUserAssignment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: User or tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "not_found"
+                message: "User not found in Okta directory"
+
+  /tenants/{tenantId}/users/{userId}:
+    delete:
+      summary: Remove user from tenant
+      description: Remove a user's access to a tenant
+      tags: [User Management]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        '204':
+          description: User removed successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /roles:
+    get:
+      summary: List available roles
+      description: Get list of all available roles in the system
+      tags: [Role Management]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: scope
+          in: query
+          description: Filter roles by scope (global, tenant)
+          schema:
+            type: string
+            enum: [global, tenant]
+      responses:
+        '200':
+          description: List of roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Role'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /permissions:
+    get:
+      summary: List available permissions
+      description: Get list of all available permissions for resources
+      tags: [Role Management]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: resource
+          in: query
+          description: Filter permissions by resource type
+          schema:
+            type: string
+            enum: [tenant, project, collection, plan, execution]
+      responses:
+        '200':
+          description: List of permissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Permission'
+
+  /audit:
+    get:
+      summary: Get audit logs
+      description: |
+        Retrieve audit logs with optional filtering.
+        Service Provider Admins can see all logs.
+        Tenant users can only see logs for their tenants.
+      tags: [Audit]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: tenant_id
+          in: query
+          description: Filter by tenant ID (tenant-scoped for non-admin users)
+          schema:
+            type: integer
+            format: int64
+        - name: user_id
+          in: query
+          description: Filter by user ID
+          schema:
+            type: string
+        - name: action
+          in: query
+          description: Filter by action type
+          schema:
+            type: string
+        - name: resource_type
+          in: query
+          description: Filter by resource type
+          schema:
+            type: string
+        - name: from_date
+          in: query
+          description: Start date for log retrieval (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+            example: "2024-01-01T00:00:00Z"
+        - name: to_date
+          in: query
+          description: End date for log retrieval (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+            example: "2024-01-31T23:59:59Z"
+        - name: limit
+          in: query
+          description: Maximum number of logs to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          description: Number of logs to skip for pagination
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLog'
+                  total:
+                    type: integer
+                    description: Total number of matching logs
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token obtained from Okta OIDC authentication.
+        Include the token in the Authorization header as: `Bearer <token>`
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "unauthorized"
+            message: "Valid JWT token required"
+
+    Forbidden:
+      description: Access denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "forbidden"
+            message: "Insufficient permissions for this operation"
+
+    BadRequest:
+      description: Invalid request data
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "validation_error"
+            message: "Invalid request parameters"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "not_found"
+            message: "The requested resource was not found"
+
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        X-Rate-Limit-Reset:
+          description: Unix timestamp when rate limit resets
+          schema:
+            type: integer
+        Retry-After:
+          description: Seconds to wait before retrying
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "rate_limited"
+            message: "Rate limit exceeded. Try again in 60 seconds."
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "internal_error"
+            message: "An unexpected error occurred"
+
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: Token expiration time in seconds
+        user:
+          $ref: '#/components/schemas/UserContext'
+
+    Tenant:
+      type: object
+      required:
+        - name
+        - display_name
+        - okta_group_prefix
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+          description: Unique identifier for the tenant
+          example: 123
+        name:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 50
+          description: Unique tenant name (lowercase, alphanumeric, hyphens)
+          example: "acme-corp"
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Human-readable tenant name
+          example: "ACME Corporation"
+        okta_group_prefix:
+          type: string
+          pattern: '^setagaya-[a-z0-9-]+$'
+          description: Prefix for Okta groups (must start with 'setagaya-')
+          example: "setagaya-acme-corp"
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED, DELETED]
+          description: Current tenant status
+          example: "ACTIVE"
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2024-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2024-01-15T10:30:00Z"
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Additional tenant-specific configuration
+          example:
+            industry: "technology"
+            region: "us-west"
+            tier: "premium"
+
+    CreateTenantRequest:
+      type: object
+      required:
+        - name
+        - display_name
+        - okta_group_prefix
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 50
+          example: "acme-corp"
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: "ACME Corporation"
+        okta_group_prefix:
+          type: string
+          pattern: '^setagaya-[a-z0-9-]+$'
+          example: "setagaya-acme-corp"
+        metadata:
+          type: object
+          additionalProperties: true
+          example:
+            industry: "technology"
+            region: "us-west"
+
+    UpdateTenantRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: "ACME Corporation Ltd"
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED, DELETED]
+          example: "SUSPENDED"
+        metadata:
+          type: object
+          additionalProperties: true
+          example:
+            suspension_reason: "Payment overdue"
+
+    TenantUserAssignment:
+      type: object
+      required:
+        - user_id
+        - role_name
+      properties:
+        user_id:
+          type: string
+          format: email
+          description: User's email address/ID from Okta
+          example: "user@acme-corp.com"
+        role_name:
+          type: string
+          enum: [tenant_admin, tenant_editor, tenant_viewer, pjm_loadtest]
+          description: Role to assign to the user
+          example: "tenant_editor"
+        assigned_at:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2024-01-15T10:30:00Z"
+        assigned_by:
+          type: string
+          readOnly: true
+          description: ID of user who made the assignment
+          example: "admin@company.com"
+
+    Role:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          description: Role name
+          example: "tenant_editor"
+        display_name:
+          type: string
+          description: Human-readable role name
+          example: "Tenant Editor"
+        description:
+          type: string
+          description: Role description
+          example: "Can create and edit resources within assigned tenants"
+        scope:
+          type: string
+          enum: [global, tenant]
+          description: Scope where this role applies
+          example: "tenant"
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+
+    Permission:
+      type: object
+      properties:
+        resource:
+          type: string
+          description: Resource type this permission applies to
+          example: "project"
+        actions:
+          type: array
+          items:
+            type: string
+          description: Allowed actions on the resource
+          example: ["create", "read", "update"]
+        scope:
+          type: string
+          enum: [global, tenant, project]
+          description: Scope where this permission applies
+          example: "tenant"
+
+    UserContext:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: User's unique identifier
+          example: "user@acme-corp.com"
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "user@acme-corp.com"
+        name:
+          type: string
+          description: User's display name
+          example: "John Doe"
+        is_service_provider:
+          type: boolean
+          description: Whether user has service provider access
+          example: false
+        global_roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+          description: Global roles assigned to the user
+        tenant_access:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/Role'
+          description: Tenant-specific role assignments
+          example:
+            "123": ["tenant_editor"]
+            "456": ["tenant_viewer"]
+
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 789
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        user_id:
+          type: string
+          description: ID of user who performed the action
+          example: "user@acme-corp.com"
+        tenant_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Tenant context for the action
+          example: 123
+        action:
+          type: string
+          description: Action performed
+          example: "create_project"
+        resource_type:
+          type: string
+          description: Type of resource affected
+          example: "project"
+        resource_id:
+          type: string
+          nullable: true
+          description: ID of specific resource affected
+          example: "456"
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional details about the action
+          example:
+            project_name: "load-test-project"
+            tenant_name: "acme-corp"
+        ip_address:
+          type: string
+          description: IP address of the request
+          example: "192.168.1.100"
+        user_agent:
+          type: string
+          description: User agent of the request
+          example: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code
+          example: "validation_error"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Invalid tenant name format"
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error details
+          example:
+            field: "name"
+            value: "Invalid Name!"
+            constraint: "Must contain only lowercase letters, numbers, and hyphens"
+        request_id:
+          type: string
+          description: Unique request identifier for tracking
+          example: "req-123e4567-e89b-12d3-a456-426614174000"
+
+externalDocs:
+  description: Setagaya Platform Documentation
+  url: https://docs.setagaya.company.com
+
+tags:
+  - name: Authentication
+    description: User authentication and session management
+  - name: Tenant Management
+    description: Multi-tenant organization management
+  - name: User Management
+    description: User role assignment and access control
+  - name: Role Management
+    description: Role and permission management
+  - name: Audit
+    description: Audit log and compliance tracking

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/guregu/null"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/hveda/Setagaya/setagaya/config"
 )
@@ -17,6 +18,9 @@ type Project struct {
 	Owner       string `json:"owner"`
 	ssID        null.String
 	SID         string        `json:"sid"`
+	TenantID    *int64        `json:"tenant_id,omitempty"`  // Added for multi-tenancy
+	CreatedBy   string        `json:"created_by,omitempty"` // Okta User ID who created
+	UpdatedBy   string        `json:"updated_by,omitempty"` // Okta User ID who last updated
 	CreatedTime time.Time     `json:"created_time"`
 	Collections []*Collection `json:"collections"`
 	Plans       []*Plan       `json:"plans"`
@@ -28,7 +32,11 @@ func CreateProject(name, owner, sid string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 
 	_sid := sql.NullString{
 		String: sid,
@@ -43,7 +51,10 @@ func CreateProject(name, owner, sid string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	id, _ := r.LastInsertId()
+	id, err := r.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get last insert ID: %w", err)
+	}
 	return id, nil
 }
 
@@ -70,15 +81,26 @@ func GetProjectsByOwners(owners []string) ([]*Project, error) {
 	if err != nil {
 		return r, err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	rows, err := q.Query(args...)
 	if err != nil {
 		return r, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close rows")
+		}
+	}()
 	for rows.Next() {
 		p := new(Project)
-		rows.Scan(&p.ID, &p.Name, &p.Owner, &p.ssID, &p.CreatedTime)
+		if err := rows.Scan(&p.ID, &p.Name, &p.Owner, &p.ssID, &p.CreatedTime); err != nil {
+			log.WithError(err).Error("Failed to scan project")
+			continue
+		}
 		p.SID = p.ssID.String
 		r = append(r, p)
 	}
@@ -95,7 +117,11 @@ func GetProject(id int64) (*Project, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 
 	project := new(Project)
 	err = q.QueryRow(id).Scan(&project.ID, &project.Name, &project.Owner, &project.ssID, &project.CreatedTime)
@@ -113,12 +139,20 @@ func (p *Project) Delete() error {
 	if err != nil {
 		return err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	rs, err := q.Query(p.ID)
 	if err != nil {
 		return err
 	}
-	defer rs.Close()
+	defer func() {
+		if closeErr := rs.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close rows")
+		}
+	}()
 	return nil
 }
 
@@ -129,15 +163,26 @@ func (p *Project) GetCollections() ([]*Collection, error) {
 	if err != nil {
 		return r, err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	rows, err := q.Query(p.ID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close rows")
+		}
+	}()
 	for rows.Next() {
 		collection := new(Collection)
-		rows.Scan(&collection.ID, &collection.Name)
+		if err := rows.Scan(&collection.ID, &collection.Name); err != nil {
+			log.WithError(err).Error("Failed to scan collection")
+			continue
+		}
 		r = append(r, collection)
 	}
 	err = rows.Err()
@@ -154,15 +199,26 @@ func (p *Project) GetPlans() ([]*Plan, error) {
 	if err != nil {
 		return r, err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	rows, err := q.Query(p.ID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close rows")
+		}
+	}()
 	for rows.Next() {
 		plan := new(Plan)
-		rows.Scan(&plan.ID, &plan.Name, &plan.ProjectID, &plan.CreatedTime)
+		if err := rows.Scan(&plan.ID, &plan.Name, &plan.ProjectID, &plan.CreatedTime); err != nil {
+			log.WithError(err).Error("Failed to scan plan")
+			continue
+		}
 		r = append(r, plan)
 	}
 	err = rows.Err()

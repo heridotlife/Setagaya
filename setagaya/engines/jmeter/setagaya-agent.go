@@ -309,7 +309,9 @@ func (sw *SetagayaWrapper) streamHandler(w http.ResponseWriter, r *http.Request)
 		if message == "" {
 			continue
 		}
-		fmt.Fprintf(w, "data: %s\n\n", message)
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", message); err != nil {
+			log.Printf("Error writing to response: %v", err)
+		}
 		flusher.Flush()
 	}
 }
@@ -558,7 +560,11 @@ func (sw *SetagayaWrapper) startHandler(w http.ResponseWriter, r *http.Request) 
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		defer r.Body.Close()
+		defer func() {
+			if err := r.Body.Close(); err != nil {
+				log.Printf("Error closing request body: %v", err)
+			}
+		}()
 		var edc enginesModel.EngineDataConfig
 		if err := json.Unmarshal(file, &edc); err != nil {
 			log.Println(err)

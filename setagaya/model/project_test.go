@@ -26,7 +26,9 @@ func TestCreateAndGetProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, name, p.Name)
-	p.Delete()
+	if err := p.Delete(); err != nil {
+		t.Logf("Failed to delete project: %v", err)
+	}
 	p, err = GetProject(projectID)
 	assert.NotNil(t, err)
 	assert.Nil(t, p)

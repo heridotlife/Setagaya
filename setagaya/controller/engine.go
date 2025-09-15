@@ -129,7 +129,11 @@ func (be *baseEngine) progress() bool {
 	if err != nil {
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Error closing response body: %v", err)
+		}
+	}()
 	return resp.StatusCode == http.StatusOK
 }
 
@@ -154,7 +158,11 @@ func (be *baseEngine) terminate(force bool) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Error closing response body: %v", err)
+		}
+	}()
 	be.closeStream()
 	return nil
 }
@@ -172,7 +180,11 @@ func (be *baseEngine) trigger(edc *enginesModel.EngineDataConfig) error {
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				log.Printf("Error closing response body: %v", err)
+			}
+		}()
 		if resp.StatusCode == http.StatusConflict {
 			log.Printf("%s is already triggered", engineUrl)
 			return nil

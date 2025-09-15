@@ -373,7 +373,11 @@ func (cr *CloudRun) DownloadPodLog(collectionID, planID int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close response body")
+		}
+	}()
 	r, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err

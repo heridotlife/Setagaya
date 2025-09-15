@@ -66,7 +66,9 @@ func (m *MockStorage) Upload(filename string, content io.ReadCloser) error {
 	if err != nil {
 		return err
 	}
-	content.Close()
+	if closeErr := content.Close(); closeErr != nil {
+		return closeErr
+	}
 
 	m.files[filename] = data
 	return nil

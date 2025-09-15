@@ -368,8 +368,12 @@ func TestSetagayaAPI_jsonise(t *testing.T) {
 
 			// Parse and compare JSON to handle formatting differences
 			var expected, actual interface{}
-			json.Unmarshal([]byte(tc.expectedBody), &expected)
-			json.Unmarshal(w.Body.Bytes(), &actual)
+			if err := json.Unmarshal([]byte(tc.expectedBody), &expected); err != nil {
+				t.Logf("Error unmarshaling expected body: %v", err)
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &actual); err != nil {
+				t.Logf("Error unmarshaling actual body: %v", err)
+			}
 			assert.Equal(t, expected, actual)
 		})
 	}

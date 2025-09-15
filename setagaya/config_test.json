@@ -3,7 +3,7 @@
   "project_home": "https://docs.example.com/setagaya/project-home",
   "upload_file_help": "https://docs.example.com/setagaya/file-upload-guide",
   "auth_config": {
-    "admin_users": [],
+    "admin_users": ["test-admin@company.com"],
     "ldap_server": "",
     "ldap_port": "",
     "system_user": "",
@@ -18,10 +18,10 @@
     "audit_enabled": true,
     "permission_cache_ttl_minutes": 15,
     "okta": {
-      "domain": "company.okta.com",
-      "client_id": "${OKTA_CLIENT_ID}",
-      "client_secret": "${OKTA_CLIENT_SECRET}",
-      "redirect_uri": "https://setagaya.company.com/auth/callback",
+      "domain": "test.okta.com",
+      "client_id": "test-client-id",
+      "client_secret": "test-client-secret",
+      "redirect_uri": "http://localhost:8080/auth/callback",
       "scopes": ["openid", "profile", "email", "groups"],
       "group_claims": "groups"
     }
@@ -30,25 +30,25 @@
     "proxy": ""
   },
   "db": {
-    "host": "db",
-    "user": "root",
-    "password": "root",
-    "database": "setagaya"
+    "host": "localhost",
+    "user": "test",
+    "password": "test",
+    "database": "setagaya_test"
   },
   "executors": {
     "cluster": {
       "on_demand": false
     },
-    "in_cluster": true,
-    "namespace": "setagaya-executors",
+    "in_cluster": false,
+    "namespace": "setagaya-test",
     "jmeter": {
       "image": "setagaya:jmeter",
       "cpu": "0.1",
-      "mem": "512Mi"
+      "mem": "256Mi"
     },
     "pull_secret": "",
     "pull_policy": "IfNotPresent",
-    "max_engines_in_collection": 10
+    "max_engines_in_collection": 2
   },
   "ingress": {
     "image": "setagaya:ingress-controller",
@@ -61,7 +61,7 @@
   },
   "object_storage": {
     "provider": "local",
-    "url": "http://storage:8080",
+    "url": "http://localhost:8080",
     "user": "",
     "password": ""
   },

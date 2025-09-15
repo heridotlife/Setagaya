@@ -16,6 +16,7 @@ debug.yaml
 */setagaya-*
 local_storage/v0
 ingress-controller/ingress-controller
+bin/golangci-lint
 
 # Go build artifacts
 */coverage.out

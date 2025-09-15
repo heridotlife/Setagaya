@@ -413,6 +413,93 @@ both README.md and TECHNICAL_SPECS.md reflect changes
 - Follow least-privilege principle for Kubernetes RBAC configurations
 - Never log sensitive data (passwords, tokens) in controller or API layers
 
+### General Compilation Error Prevention Patterns
+
+**CRITICAL**: When implementing any new features in Setagaya, follow these patterns to prevent compilation errors:
+
+#### 1. **Interface Compliance**
+- Always implement complete interfaces before adding new functionality
+- Use consistent method signatures across related components
+- Use pointer return types for complex objects: `(*Object, error)` not `(Object, error)`
+- Verify all required methods are implemented with correct signatures
+
+#### 2. **Import Management**
+- Add all required imports for new types and functions
+- Avoid circular imports by using clean interface design
+- Use proper package organization (`setagaya/package/component.go`)
+- Import types at the package level, not within functions
+
+#### 3. **API Handler Patterns**
+- Place new handlers in appropriate files (`setagaya/api/feature_handlers.go`)
+- Use consistent error handling patterns with `s.makeFailMessage()` and `s.handleErrors()`
+- Validate input parameters before processing requests
+- Include proper authorization checks for each endpoint
+
+#### 4. **Testing Integration**
+- Update test files when adding new functionality
+- Use API instance methods correctly in tests (not package-level functions)
+- Add both success and failure test cases for new features
+- Ensure tests can run with `SETAGAYA_TEST_MODE=true`
+
+#### 5. **Build Compatibility**
+- Maintain Go module compatibility (currently Go 1.25.1)
+- Use build tags appropriately for different environments
+- Avoid platform-specific code unless properly tagged
+- Test compilation across different Go versions in CI/CD
+
+#### 6. **Common Compilation Errors to Avoid**
+- Missing method implementations causing undefined function errors
+- Incorrect method signatures causing interface compliance failures
+- Missing imports for new types in handlers and tests
+- Incomplete error handling in middleware and handlers
+- Using package-level functions instead of instance methods in tests
+- Import cycles between packages
+
+### RBAC Implementation Guidelines
+
+**CRITICAL**: When implementing RBAC features specifically, follow these additional patterns:
+
+1. **Interface Implementation**: Always implement complete interfaces in `setagaya/rbac/interfaces.go`:
+   - Ensure all RBACEngine methods are implemented with correct signatures
+   - Use pointer return types for complex objects: `(*Tenant, error)` not `(Tenant, error)`
+   - Implement all required methods before adding new functionality
+
+2. **Method Signatures**: Follow these patterns for RBAC engine methods:
+   ```go
+   CreateTenant(ctx context.Context, tenant *Tenant) (*Tenant, error)
+   UpdateTenant(ctx context.Context, updates *Tenant) (*Tenant, error)
+   GetTenant(ctx context.Context, tenantID int64) (*Tenant, error)
+   GetAccessibleTenants(ctx context.Context, userContext *UserContext) ([]*Tenant, error)
+   DeleteTenant(ctx context.Context, tenantID int64) error
+   ```
+
+3. **API Handler Organization**: 
+   - Place RBAC handlers in separate files (`setagaya/api/rbac_handlers.go`)
+   - Always check RBAC enablement before processing requests
+   - Use consistent error handling patterns with `s.makeFailMessage()` and `s.handleErrors()`
+   - Include proper authorization checks for each endpoint
+
+4. **Backward Compatibility**: 
+   - Maintain legacy auth support with runtime switching
+   - Use `s.enableRBAC` flag to toggle between auth systems
+   - Ensure middleware properly handles both authentication methods
+
+5. **Testing Requirements**:
+   - Add unit tests for all RBAC components
+   - Test both RBAC enabled/disabled scenarios
+   - Include authorization success/failure test cases
+
+6. **Documentation Updates**: 
+   - Update OpenAPI specification for all new RBAC endpoints
+   - Add complete request/response schemas for tenant management
+   - Include proper authentication and authorization documentation
+   - Update technical specifications with RBAC architecture details
+
+**RBAC-Specific Errors to Avoid**:
+- Missing imports for RBAC types in API handlers
+- Incomplete error handling in RBAC middleware
+- Missing authorization checks in tenant management endpoints
+
 ## Key Files for Understanding
 
 - `setagaya/main.go` - Application entry point and HTTP routing

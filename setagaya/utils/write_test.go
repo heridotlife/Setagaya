@@ -309,7 +309,11 @@ func TestFolderEdgeCases(t *testing.T) {
 
 		err = os.Chdir(tempDir)
 		assert.NoError(t, err)
-		defer os.Chdir(oldWd)
+		defer func() {
+			if chdirErr := os.Chdir(oldWd); chdirErr != nil {
+				t.Logf("Failed to change directory back: %v", chdirErr)
+			}
+		}()
 
 		relativePath := "relative-folder"
 		MakeFolder(relativePath)

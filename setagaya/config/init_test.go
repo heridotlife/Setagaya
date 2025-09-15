@@ -45,9 +45,15 @@ func TestLoadContext(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Set environment variable
 			oldEnv := os.Getenv("env")
-			defer os.Setenv("env", oldEnv) // Restore after test
+			defer func() {
+				if err := os.Setenv("env", oldEnv); err != nil {
+					t.Logf("Error restoring env variable: %v", err)
+				}
+			}() // Restore after test
 
-			os.Setenv("env", tc.envValue)
+			if err := os.Setenv("env", tc.envValue); err != nil {
+				t.Fatalf("Error setting env variable: %v", err)
+			}
 
 			result := loadContext()
 			assert.Equal(t, tc.expected, result)

@@ -8,7 +8,12 @@ import (
 	"github.com/hveda/Setagaya/setagaya/model"
 )
 
-func hasProjectOwnership(project *model.Project, account *model.Account) bool {
+func (s *SetagayaAPI) hasProjectOwnership(project *model.Project, account *model.Account) bool {
+	if s.enableRBAC && s.rbacIntegration != nil {
+		return s.rbacIntegration.HasProjectOwnership(project, account)
+	}
+
+	// Fallback to legacy ownership check
 	if _, ok := account.MLMap[project.Owner]; !ok {
 		if !account.IsAdmin() {
 			return false
@@ -17,7 +22,7 @@ func hasProjectOwnership(project *model.Project, account *model.Account) bool {
 	return true
 }
 
-func hasCollectionOwnership(r *http.Request, params httprouter.Params) (*model.Collection, error) {
+func (s *SetagayaAPI) hasCollectionOwnership(r *http.Request, params httprouter.Params) (*model.Collection, error) {
 	collection, err := getCollection(params.ByName("collection_id"))
 	if err != nil {
 		return nil, err
@@ -26,12 +31,21 @@ func hasCollectionOwnership(r *http.Request, params httprouter.Params) (*model.C
 	if !ok {
 		return nil, makeInvalidRequestError("account")
 	}
-	project, err := model.GetProject(collection.ProjectID)
-	if err != nil {
-		return nil, err
+
+	if s.enableRBAC && s.rbacIntegration != nil {
+		if !s.rbacIntegration.HasCollectionOwnership(collection, account) {
+			return nil, makeCollectionOwnershipError()
+		}
+	} else {
+		// Fallback to legacy ownership check
+		project, err := model.GetProject(collection.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		if r := s.hasProjectOwnership(project, account); !r {
+			return nil, makeCollectionOwnershipError()
+		}
 	}
-	if r := hasProjectOwnership(project, account); !r {
-		return nil, makeCollectionOwnershipError()
-	}
+
 	return collection, nil
 }

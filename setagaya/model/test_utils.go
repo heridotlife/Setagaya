@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	_ "github.com/go-sql-driver/mysql"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/hveda/Setagaya/setagaya/config"
 )
@@ -63,7 +64,11 @@ func executeDelete(db *sql.DB, query string) error {
 	if err != nil {
 		return err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 
 	_, err = q.Exec()
 	return err
@@ -197,6 +202,8 @@ func CreateTestConfigFile(t *testing.T) (string, func()) {
 
 	return configPath, func() {
 		config.ConfigFilePath = originalPath
-		os.Remove(configPath)
+		if err := os.Remove(configPath); err != nil {
+			log.WithError(err).Warnf("Failed to remove temporary config file: %s", configPath)
+		}
 	}
 }

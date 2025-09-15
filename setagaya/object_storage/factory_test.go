@@ -221,9 +221,18 @@ func TestStorageInterfaceCompliance(t *testing.T) {
 
 			// These might fail, but they shouldn't panic
 			// We're mainly testing that the methods exist
-			storage.Upload("test.txt", nil) // Will likely fail but shouldn't panic
-			storage.Download("test.txt")    // Will likely fail but shouldn't panic
-			storage.Delete("test.txt")      // Will likely fail but shouldn't panic
+			if err := storage.Upload("test.txt", nil); err != nil {
+				// Expected to fail in test - log for debugging
+				t.Logf("Upload failed as expected: %v", err)
+			}
+			if _, err := storage.Download("test.txt"); err != nil {
+				// Expected to fail in test - log for debugging
+				t.Logf("Download failed as expected: %v", err)
+			}
+			if err := storage.Delete("test.txt"); err != nil {
+				// Expected to fail in test - log for debugging
+				t.Logf("Delete failed as expected: %v", err)
+			}
 		})
 	}
 }

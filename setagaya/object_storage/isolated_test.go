@@ -42,15 +42,15 @@ func TestStorageInterfaceContract(t *testing.T) {
 	// These should compile but will panic at runtime since storage is nil
 	// We're just testing the interface contract
 	assert.Panics(t, func() {
-		storage.Upload("test", nil)
+		_ = storage.Upload("test", nil)
 	})
 
 	assert.Panics(t, func() {
-		storage.Delete("test")
+		_ = storage.Delete("test")
 	})
 
 	assert.Panics(t, func() {
-		storage.Download("test")
+		_, _ = storage.Download("test")
 	})
 
 	assert.Panics(t, func() {
@@ -83,7 +83,9 @@ func (m *TestMockStorage) Upload(filename string, content io.ReadCloser) error {
 	if err != nil {
 		return err
 	}
-	content.Close()
+	if closeErr := content.Close(); closeErr != nil {
+		return closeErr
+	}
 
 	m.files[filename] = data
 	return nil

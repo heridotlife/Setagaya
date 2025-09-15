@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -19,20 +20,37 @@ import (
 	"github.com/hveda/Setagaya/setagaya/controller"
 	"github.com/hveda/Setagaya/setagaya/model"
 	"github.com/hveda/Setagaya/setagaya/object_storage"
+	"github.com/hveda/Setagaya/setagaya/rbac"
 	"github.com/hveda/Setagaya/setagaya/scheduler"
 	smodel "github.com/hveda/Setagaya/setagaya/scheduler/model"
 	utils "github.com/hveda/Setagaya/setagaya/utils"
 )
 
 type SetagayaAPI struct {
-	ctr *controller.Controller
+	ctr             *controller.Controller
+	rbacIntegration *rbac.Integration
+	enableRBAC      bool
 }
 
 func NewAPIServer() *SetagayaAPI {
 	c := &SetagayaAPI{
-		ctr: controller.NewController(),
+		ctr:        controller.NewController(),
+		enableRBAC: true, // TODO: Read from config
 	}
 	c.ctr.StartRunning()
+
+	// Initialize RBAC integration
+	if c.enableRBAC {
+		integration, err := rbac.NewIntegration()
+		if err != nil {
+			log.WithError(err).Error("Failed to initialize RBAC integration")
+			c.enableRBAC = false
+		} else {
+			c.rbacIntegration = integration
+			log.Info("RBAC integration enabled for API server")
+		}
+	}
+
 	return c
 }
 
@@ -98,49 +116,98 @@ func (s *SetagayaAPI) projectsGetHandler(w http.ResponseWriter, r *http.Request,
 		s.handleErrors(w, makeInvalidRequestError("account"))
 		return
 	}
-	qs := r.URL.Query()
-	var includeCollections, includePlans bool
-	var err error
 
-	includeCollectionsList := qs["include_collections"]
-	includePlansList := qs["include_plans"]
-	if len(includeCollectionsList) > 0 {
-		if includeCollections, err = strconv.ParseBool(includeCollectionsList[0]); err != nil {
-			includeCollections = false
-		}
-	} else {
-		includeCollections = false
-	}
+	// Parse query parameters for optional includes
+	includeOptions := s.parseProjectIncludes(r.URL.Query())
 
-	if len(includePlansList) > 0 {
-		if includePlans, err = strconv.ParseBool(includePlansList[0]); err != nil {
-			includePlans = false
-		}
-	} else {
-		includePlans = false
-	}
-	projects, err := model.GetProjectsByOwners(account.ML)
+	// Get projects with RBAC-aware filtering
+	projects, err := s.getProjectsWithRBACFilter(account)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
 	}
-	if !includeCollections && !includePlans {
+
+	// Return simple projects if no includes requested
+	if !includeOptions.includeCollections && !includeOptions.includePlans {
 		s.jsonise(w, http.StatusOK, projects)
 		return
 	}
+
+	// Enhance projects with requested includes
+	s.enhanceProjectsWithIncludes(projects, includeOptions)
+	s.jsonise(w, http.StatusOK, projects)
+}
+
+// projectIncludeOptions defines what to include in project response
+type projectIncludeOptions struct {
+	includeCollections bool
+	includePlans       bool
+}
+
+// parseProjectIncludes parses query parameters for project includes
+func (s *SetagayaAPI) parseProjectIncludes(qs url.Values) projectIncludeOptions {
+	options := projectIncludeOptions{}
+
+	includeCollectionsList := qs["include_collections"]
+	includePlansList := qs["include_plans"]
+
+	if len(includeCollectionsList) > 0 {
+		if includeCollections, err := strconv.ParseBool(includeCollectionsList[0]); err == nil {
+			options.includeCollections = includeCollections
+		}
+	}
+
+	if len(includePlansList) > 0 {
+		if includePlans, err := strconv.ParseBool(includePlansList[0]); err == nil {
+			options.includePlans = includePlans
+		}
+	}
+
+	return options
+}
+
+// getProjectsWithRBACFilter gets projects with RBAC-aware filtering when enabled
+func (s *SetagayaAPI) getProjectsWithRBACFilter(account *model.Account) ([]*model.Project, error) {
+	if s.enableRBAC && s.rbacIntegration != nil {
+		return s.getProjectsViaRBAC(account)
+	}
+
+	// Fallback to legacy method
+	return model.GetProjectsByOwners(account.ML)
+}
+
+// getProjectsViaRBAC attempts to get projects via RBAC with fallback
+func (s *SetagayaAPI) getProjectsViaRBAC(account *model.Account) ([]*model.Project, error) {
+	// Use RBAC-aware project filtering
+	result, rbacErr := s.rbacIntegration.GetProjectsByOwnersWithTenantFilter(account.ML, account)
+	if rbacErr != nil || result == nil {
+		// Fall back to legacy method if RBAC filtering fails
+		return model.GetProjectsByOwners(account.ML)
+	}
+
+	// Type assert the result
+	if projectList, ok := result.([]*model.Project); ok {
+		return projectList, nil
+	}
+
+	// Fallback if type assertion fails
+	return model.GetProjectsByOwners(account.ML)
+}
+
+// enhanceProjectsWithIncludes adds collections and/or plans to projects as requested
+func (s *SetagayaAPI) enhanceProjectsWithIncludes(projects []*model.Project, options projectIncludeOptions) {
 	for _, p := range projects {
-		if includeCollections {
+		if options.includeCollections {
 			if collections, err := p.GetCollections(); err == nil {
 				p.Collections = collections
 			}
 		}
-		if includePlans {
+		if options.includePlans {
 			if plans, err := p.GetPlans(); err == nil {
 				p.Plans = plans
 			}
 		}
 	}
-	s.jsonise(w, http.StatusOK, projects)
 }
 
 func (s *SetagayaAPI) projectGetHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -216,7 +283,7 @@ func (s *SetagayaAPI) projectDeleteHandler(w http.ResponseWriter, r *http.Reques
 		s.handleErrors(w, err)
 		return
 	}
-	if r := hasProjectOwnership(project, account); !r {
+	if r := s.hasProjectOwnership(project, account); !r {
 		s.handleErrors(w, makeProjectOwnershipError())
 		return
 	}
@@ -274,6 +341,260 @@ func (s *SetagayaAPI) collectionAdminGetHandler(w http.ResponseWriter, r *http.R
 	s.jsonise(w, http.StatusOK, acr)
 }
 
+// RBAC Tenant Management Handlers
+
+func (s *SetagayaAPI) tenantCreateHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	if !s.enableRBAC {
+		s.handleErrors(w, makeAPIDisabledError("RBAC not enabled"))
+		return
+	}
+
+	account, ok := r.Context().Value(accountKey).(*model.Account)
+	if !ok {
+		s.handleErrors(w, makeInvalidRequestError("account"))
+		return
+	}
+
+	// Only service providers can create tenants
+	userContext, err := s.rbacIntegration.GetUserContext(r.Context(), account.Name)
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	if !userContext.IsServiceProvider {
+		s.handleErrors(w, makeNoPermissionErr("Only service providers can create tenants"))
+		return
+	}
+
+	var tenant rbac.Tenant
+	if decodeErr := json.NewDecoder(r.Body).Decode(&tenant); decodeErr != nil {
+		s.handleErrors(w, makeInvalidRequestError("Invalid JSON payload"))
+		return
+	}
+
+	// Validate required fields
+	if tenant.Name == "" {
+		s.handleErrors(w, makeInvalidRequestError("Tenant name cannot be empty"))
+		return
+	}
+
+	if tenant.DisplayName == "" {
+		s.handleErrors(w, makeInvalidRequestError("Tenant display name cannot be empty"))
+		return
+	}
+
+	// Create tenant
+	engine, err := s.rbacIntegration.GetRBACEngine()
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	createdTenant, err := engine.CreateTenant(r.Context(), &tenant)
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	s.jsonise(w, http.StatusCreated, createdTenant)
+}
+
+func (s *SetagayaAPI) tenantsGetHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	if !s.enableRBAC {
+		s.handleErrors(w, makeAPIDisabledError("RBAC not enabled"))
+		return
+	}
+
+	account, ok := r.Context().Value(accountKey).(*model.Account)
+	if !ok {
+		s.handleErrors(w, makeInvalidRequestError("account"))
+		return
+	}
+
+	userContext, err := s.rbacIntegration.GetUserContext(r.Context(), account.Name)
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	engine, err := s.rbacIntegration.GetRBACEngine()
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	var tenants []*rbac.Tenant
+	if userContext.IsServiceProvider {
+		// Service providers can see all tenants
+		allTenants, listErr := engine.ListTenants(r.Context(), "")
+		if listErr != nil {
+			s.handleErrors(w, listErr)
+			return
+		}
+		for i := range allTenants {
+			tenants = append(tenants, &allTenants[i])
+		}
+	} else {
+		// Regular users can only see tenants they have access to
+		tenants, err = engine.GetAccessibleTenants(r.Context(), userContext)
+		if err != nil {
+			s.handleErrors(w, err)
+			return
+		}
+	}
+
+	s.jsonise(w, http.StatusOK, tenants)
+}
+
+func (s *SetagayaAPI) tenantGetHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	if !s.enableRBAC {
+		s.handleErrors(w, makeAPIDisabledError("RBAC not enabled"))
+		return
+	}
+
+	account, ok := r.Context().Value(accountKey).(*model.Account)
+	if !ok {
+		s.handleErrors(w, makeInvalidRequestError("account"))
+		return
+	}
+
+	tenantIDStr := params.ByName("tenant_id")
+	tenantID, err := strconv.ParseInt(tenantIDStr, 10, 64)
+	if err != nil {
+		s.handleErrors(w, makeInvalidRequestError("Invalid tenant ID"))
+		return
+	}
+
+	userContext, err := s.rbacIntegration.GetUserContext(r.Context(), account.Name)
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	engine, err := s.rbacIntegration.GetRBACEngine()
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	// Check if user has access to this tenant
+	if !userContext.IsServiceProvider && !userContext.HasTenantAccess(tenantID) {
+		s.handleErrors(w, makeNoPermissionErr("Access denied to tenant"))
+		return
+	}
+
+	tenant, err := engine.GetTenant(r.Context(), tenantID)
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	s.jsonise(w, http.StatusOK, tenant)
+}
+
+func (s *SetagayaAPI) tenantUpdateHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	if !s.enableRBAC {
+		s.handleErrors(w, makeAPIDisabledError("RBAC not enabled"))
+		return
+	}
+
+	account, ok := r.Context().Value(accountKey).(*model.Account)
+	if !ok {
+		s.handleErrors(w, makeInvalidRequestError("account"))
+		return
+	}
+
+	tenantIDStr := params.ByName("tenant_id")
+	tenantID, err := strconv.ParseInt(tenantIDStr, 10, 64)
+	if err != nil {
+		s.handleErrors(w, makeInvalidRequestError("Invalid tenant ID"))
+		return
+	}
+
+	userContext, err := s.rbacIntegration.GetUserContext(r.Context(), account.Name)
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	// Check if user can update this tenant (service provider or tenant admin)
+	canUpdate := userContext.IsServiceProvider || userContext.HasTenantRole(tenantID, "tenant_admin")
+	if !canUpdate {
+		s.handleErrors(w, makeNoPermissionErr("Insufficient permissions to update tenant"))
+		return
+	}
+
+	var updates rbac.Tenant
+	if decodeErr := json.NewDecoder(r.Body).Decode(&updates); decodeErr != nil {
+		s.handleErrors(w, makeInvalidRequestError("Invalid JSON payload"))
+		return
+	}
+
+	// Set the tenant ID for the update
+	updates.ID = tenantID
+
+	engine, err := s.rbacIntegration.GetRBACEngine()
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	updatedTenant, err := engine.UpdateTenant(r.Context(), &updates)
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	s.jsonise(w, http.StatusOK, updatedTenant)
+}
+
+func (s *SetagayaAPI) tenantDeleteHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	if !s.enableRBAC {
+		s.handleErrors(w, makeAPIDisabledError("RBAC not enabled"))
+		return
+	}
+
+	account, ok := r.Context().Value(accountKey).(*model.Account)
+	if !ok {
+		s.handleErrors(w, makeInvalidRequestError("account"))
+		return
+	}
+
+	tenantIDStr := params.ByName("tenant_id")
+	tenantID, err := strconv.ParseInt(tenantIDStr, 10, 64)
+	if err != nil {
+		s.handleErrors(w, makeInvalidRequestError("Invalid tenant ID"))
+		return
+	}
+
+	userContext, err := s.rbacIntegration.GetUserContext(r.Context(), account.Name)
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	// Only service providers can delete tenants
+	if !userContext.IsServiceProvider {
+		s.handleErrors(w, makeNoPermissionErr("Only service providers can delete tenants"))
+		return
+	}
+
+	engine, err := s.rbacIntegration.GetRBACEngine()
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	err = engine.DeleteTenant(r.Context(), tenantID)
+	if err != nil {
+		s.handleErrors(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *SetagayaAPI) planCreateHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	account, ok := r.Context().Value(accountKey).(*model.Account)
 	if !ok {
@@ -290,7 +611,7 @@ func (s *SetagayaAPI) planCreateHandler(w http.ResponseWriter, r *http.Request, 
 		s.handleErrors(w, err)
 		return
 	}
-	if r := hasProjectOwnership(project, account); !r {
+	if r := s.hasProjectOwnership(project, account); !r {
 		s.handleErrors(w, makeProjectOwnershipError())
 		return
 	}
@@ -327,7 +648,7 @@ func (s *SetagayaAPI) planDeleteHandler(w http.ResponseWriter, r *http.Request, 
 		s.handleErrors(w, err)
 		return
 	}
-	if r := hasProjectOwnership(project, account); !r {
+	if r := s.hasProjectOwnership(project, account); !r {
 		s.handleErrors(w, makeProjectOwnershipError())
 		return
 	}
@@ -382,7 +703,7 @@ func (s *SetagayaAPI) collectionFilesGetHandler(w http.ResponseWriter, _ *http.R
 }
 
 func (s *SetagayaAPI) collectionFilesUploadHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	collection, err := hasCollectionOwnership(r, params)
+	collection, err := s.hasCollectionOwnership(r, params)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
@@ -407,7 +728,7 @@ func (s *SetagayaAPI) collectionFilesUploadHandler(w http.ResponseWriter, r *htt
 }
 
 func (s *SetagayaAPI) collectionFilesDeleteHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	collection, err := hasCollectionOwnership(r, params)
+	collection, err := s.hasCollectionOwnership(r, params)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
@@ -477,7 +798,7 @@ func (s *SetagayaAPI) collectionCreateHandler(w http.ResponseWriter, r *http.Req
 		s.handleErrors(w, err)
 		return
 	}
-	if r := hasProjectOwnership(project, account); !r {
+	if r := s.hasProjectOwnership(project, account); !r {
 		s.handleErrors(w, makeProjectOwnershipError())
 		return
 	}
@@ -495,7 +816,7 @@ func (s *SetagayaAPI) collectionCreateHandler(w http.ResponseWriter, r *http.Req
 }
 
 func (s *SetagayaAPI) collectionDeleteHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	collection, err := hasCollectionOwnership(r, params)
+	collection, err := s.hasCollectionOwnership(r, params)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
@@ -520,7 +841,7 @@ func (s *SetagayaAPI) collectionDeleteHandler(w http.ResponseWriter, r *http.Req
 }
 
 func (s *SetagayaAPI) collectionGetHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	collection, err := hasCollectionOwnership(r, params)
+	collection, err := s.hasCollectionOwnership(r, params)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
@@ -641,7 +962,7 @@ func (s *SetagayaAPI) validateCollectionState(collection *model.Collection, newT
 }
 
 func (s *SetagayaAPI) collectionUploadHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	collection, err := hasCollectionOwnership(r, params)
+	collection, err := s.hasCollectionOwnership(r, params)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
@@ -690,7 +1011,7 @@ func (s *SetagayaAPI) collectionUploadHandler(w http.ResponseWriter, r *http.Req
 }
 
 func (s *SetagayaAPI) collectionEnginesDetailHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	collection, err := hasCollectionOwnership(r, params)
+	collection, err := s.hasCollectionOwnership(r, params)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
@@ -704,7 +1025,7 @@ func (s *SetagayaAPI) collectionEnginesDetailHandler(w http.ResponseWriter, r *h
 }
 
 func (s *SetagayaAPI) collectionDeploymentHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	collection, err := hasCollectionOwnership(r, params)
+	collection, err := s.hasCollectionOwnership(r, params)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
@@ -721,7 +1042,7 @@ func (s *SetagayaAPI) collectionDeploymentHandler(w http.ResponseWriter, r *http
 }
 
 func (s *SetagayaAPI) collectionTriggerHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	collection, err := hasCollectionOwnership(r, params)
+	collection, err := s.hasCollectionOwnership(r, params)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
@@ -733,7 +1054,7 @@ func (s *SetagayaAPI) collectionTriggerHandler(w http.ResponseWriter, r *http.Re
 }
 
 func (s *SetagayaAPI) collectionTermHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	collection, err := hasCollectionOwnership(r, params)
+	collection, err := s.hasCollectionOwnership(r, params)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
@@ -745,7 +1066,7 @@ func (s *SetagayaAPI) collectionTermHandler(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *SetagayaAPI) collectionStatusHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	collection, err := hasCollectionOwnership(r, params)
+	collection, err := s.hasCollectionOwnership(r, params)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
@@ -758,7 +1079,7 @@ func (s *SetagayaAPI) collectionStatusHandler(w http.ResponseWriter, r *http.Req
 }
 
 func (s *SetagayaAPI) collectionPurgeHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	collection, err := hasCollectionOwnership(r, params)
+	collection, err := s.hasCollectionOwnership(r, params)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
@@ -791,7 +1112,7 @@ func (s *SetagayaAPI) planLogHandler(w http.ResponseWriter, r *http.Request, par
 }
 
 func (s *SetagayaAPI) streamCollectionMetrics(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	collection, err := hasCollectionOwnership(r, params)
+	collection, err := s.hasCollectionOwnership(r, params)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
@@ -826,9 +1147,13 @@ func (s *SetagayaAPI) streamCollectionMetrics(w http.ResponseWriter, r *http.Req
 		}
 		s, err := json.Marshal(event)
 		if err != nil {
-			fmt.Fprintf(w, "data:%v\n\n", err)
+			if _, writeErr := fmt.Fprintf(w, "data:%v\n\n", err); writeErr != nil {
+				log.Printf("Error writing to response: %v", writeErr)
+			}
 		} else {
-			fmt.Fprintf(w, "data:%s\n\n", s)
+			if _, writeErr := fmt.Fprintf(w, "data:%s\n\n", s); writeErr != nil {
+				log.Printf("Error writing to response: %v", writeErr)
+			}
 		}
 		flusher.Flush()
 	}
@@ -911,13 +1236,26 @@ func (s *SetagayaAPI) InitRoutes() Routes {
 		&Route{"usage_summary_by_sid", "GET", "/api/usage/summary_sid", s.usageSummaryHandlerBySid},
 
 		&Route{"admin_collections", "GET", "/api/admin/collections", s.collectionAdminGetHandler},
+
+		// RBAC Tenant Management endpoints
+		&Route{"create_tenant", "POST", "/api/tenants", s.tenantCreateHandler},
+		&Route{"get_tenants", "GET", "/api/tenants", s.tenantsGetHandler},
+		&Route{"get_tenant", "GET", "/api/tenants/:tenant_id", s.tenantGetHandler},
+		&Route{"update_tenant", "PUT", "/api/tenants/:tenant_id", s.tenantUpdateHandler},
+		&Route{"delete_tenant", "DELETE", "/api/tenants/:tenant_id", s.tenantDeleteHandler},
 	}
 	for _, r := range routes {
 		// TODO! We don't require auth for usage endpoint for now.
 		if strings.Contains(r.Path, "usage") {
 			continue
 		}
-		r.HandlerFunc = s.authRequired(r.HandlerFunc)
+
+		// Apply RBAC authorization if available, otherwise fallback to legacy auth
+		if s.enableRBAC && s.rbacIntegration != nil {
+			r.HandlerFunc = s.rbacIntegration.GetMiddleware().AuthorizeRequest(r.HandlerFunc)
+		} else {
+			r.HandlerFunc = s.authRequired(r.HandlerFunc)
+		}
 	}
 	return routes
 }

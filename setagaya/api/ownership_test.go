@@ -9,6 +9,11 @@ import (
 )
 
 func TestHasProjectOwnership(t *testing.T) {
+	// Create an API instance for testing
+	api := &SetagayaAPI{
+		enableRBAC: false, // Use legacy mode for testing
+	}
+
 	testCases := []struct {
 		name          string
 		project       *model.Project
@@ -118,7 +123,7 @@ func TestHasProjectOwnership(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// For this test, we need to mock the IsAdmin behavior
 			// Since we can't easily mock it, we'll create scenarios where we know the outcome
-			result := hasProjectOwnership(tc.project, tc.account)
+			result := api.hasProjectOwnership(tc.project, tc.account)
 
 			// Check if user is in the owner group
 			_, hasOwnership := tc.account.MLMap[tc.project.Owner]
@@ -135,6 +140,11 @@ func TestHasProjectOwnership(t *testing.T) {
 }
 
 func TestHasProjectOwnershipEdgeCases(t *testing.T) {
+	// Create an API instance for testing
+	api := &SetagayaAPI{
+		enableRBAC: false, // Use legacy mode for testing
+	}
+
 	t.Run("nil project", func(t *testing.T) {
 		account := &model.Account{
 			Name:  "user",
@@ -147,7 +157,7 @@ func TestHasProjectOwnershipEdgeCases(t *testing.T) {
 				t.Errorf("The code did not panic")
 			}
 		}()
-		hasProjectOwnership(nil, account)
+		api.hasProjectOwnership(nil, account)
 	})
 
 	t.Run("nil account", func(t *testing.T) {
@@ -161,7 +171,7 @@ func TestHasProjectOwnershipEdgeCases(t *testing.T) {
 				t.Errorf("The code did not panic")
 			}
 		}()
-		hasProjectOwnership(project, nil)
+		api.hasProjectOwnership(project, nil)
 	})
 
 	t.Run("special characters in owner", func(t *testing.T) {
@@ -175,7 +185,7 @@ func TestHasProjectOwnershipEdgeCases(t *testing.T) {
 			},
 		}
 
-		result := hasProjectOwnership(project, account)
+		result := api.hasProjectOwnership(project, account)
 		assert.True(t, result)
 	})
 
@@ -190,7 +200,7 @@ func TestHasProjectOwnershipEdgeCases(t *testing.T) {
 			},
 		}
 
-		result := hasProjectOwnership(project, account)
+		result := api.hasProjectOwnership(project, account)
 		// Should be false due to case sensitivity unless user is admin
 		// In test mode, this depends on IsAdmin() implementation
 		assert.IsType(t, bool(false), result)
@@ -207,7 +217,7 @@ func TestHasProjectOwnershipEdgeCases(t *testing.T) {
 			},
 		}
 
-		result := hasProjectOwnership(project, account)
+		result := api.hasProjectOwnership(project, account)
 		// Should be false due to whitespace difference unless user is admin
 		assert.IsType(t, bool(false), result)
 	})

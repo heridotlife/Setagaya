@@ -29,13 +29,20 @@ func CreatePlan(name string, projectID int64) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 
 	r, err := q.Exec(name, projectID)
 	if err != nil {
 		return 0, err
 	}
-	id, _ := r.LastInsertId()
+	id, err := r.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get last insert ID: %w", err)
+	}
 	return id, nil
 }
 
@@ -45,7 +52,11 @@ func GetPlan(ID int64) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 
 	plan := new(Plan)
 	err = q.QueryRow(ID).Scan(&plan.ID, &plan.Name, &plan.ProjectID, &plan.CreatedTime)
@@ -64,16 +75,27 @@ func (p *Plan) GetPlanFiles() (*SetagayaFile, []*SetagayaFile, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	rows, err := q.Query(p.ID)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close rows")
+		}
+	}()
 	r := []*SetagayaFile{}
 	for rows.Next() {
 		f := new(SetagayaFile)
-		rows.Scan(&f.Filename)
+		if err := rows.Scan(&f.Filename); err != nil {
+			log.WithError(err).Error("Failed to scan filename")
+			continue
+		}
 		f.Filepath = p.MakeFileName(f.Filename)
 		f.Filelink = object_storage.Client.Storage.GetUrl(f.Filepath)
 		r = append(r, f)
@@ -86,7 +108,11 @@ func (p *Plan) GetPlanFiles() (*SetagayaFile, []*SetagayaFile, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	defer q2.Close()
+	defer func() {
+		if closeErr := q2.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	t := new(SetagayaFile)
 	err = q2.QueryRow(p.ID).Scan(&t.Filename)
 	if err != nil {
@@ -106,7 +132,11 @@ func (p *Plan) Delete() error {
 	if err != nil {
 		return err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	_, err = q.Exec(p.ID)
 	if err != nil {
 		return err
@@ -129,7 +159,11 @@ func (p *Plan) StoreFile(content io.ReadCloser, filename string) error {
 	if err != nil {
 		return err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	_, err = q.Exec(p.ID, filename)
 	if driverErr, ok := err.(*mysql.MySQLError); ok {
 		if driverErr.Number == 1062 {
@@ -150,7 +184,11 @@ func (p *Plan) DeleteFile(filename string) error {
 	if err != nil {
 		return err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 
 	_, err = q.Exec(filename, p.ID)
 	if err != nil {
@@ -169,7 +207,11 @@ func (p *Plan) DeleteAllFiles() error {
 	if err != nil {
 		return err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 
 	_, err = q.Exec(p.ID)
 	if err != nil {
@@ -191,12 +233,20 @@ func (p *Plan) IsBeingUsed() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	rs, err := q.Query(p.ID)
 	if err != nil {
 		return false, err
 	}
-	defer rs.Close()
+	defer func() {
+		if closeErr := rs.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close rows")
+		}
+	}()
 	for rs.Next() {
 		return true, nil
 	}
@@ -215,16 +265,27 @@ func GetRunningCollections() ([]*RunningPlan, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	rs, err := q.Query(config.SC.Context)
 	if err != nil {
 		return nil, err
 	}
-	defer rs.Close()
+	defer func() {
+		if closeErr := rs.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close rows")
+		}
+	}()
 	rps := []*RunningPlan{}
 	for rs.Next() {
 		rp := new(RunningPlan)
-		rs.Scan(&rp.CollectionID, &rp.StartedTime)
+		if err := rs.Scan(&rp.CollectionID, &rp.StartedTime); err != nil {
+			log.WithError(err).Error("Failed to scan running plan")
+			continue
+		}
 		rps = append(rps, rp)
 	}
 	return rps, nil
@@ -236,16 +297,27 @@ func GetRunningPlans() ([]*RunningPlan, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	rs, err := q.Query(config.SC.Context)
 	if err != nil {
 		return nil, err
 	}
-	defer rs.Close()
+	defer func() {
+		if closeErr := rs.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close rows")
+		}
+	}()
 	rps := []*RunningPlan{}
 	for rs.Next() {
 		rp := new(RunningPlan)
-		rs.Scan(&rp.CollectionID, &rp.PlanID, &rp.StartedTime)
+		if err := rs.Scan(&rp.CollectionID, &rp.PlanID, &rp.StartedTime); err != nil {
+			log.WithError(err).Error("Failed to scan running plan")
+			continue
+		}
 		rps = append(rps, rp)
 	}
 	return rps, nil
@@ -257,7 +329,11 @@ func GetRunningPlan(collectionID, planID int64) (*RunningPlan, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	rp := new(RunningPlan)
 	err = q.QueryRow(collectionID, planID).Scan(&rp.CollectionID, &rp.PlanID, &rp.StartedTime)
 	if err != nil {
@@ -272,7 +348,11 @@ func AddRunningPlan(collectionID, planID int64) error {
 	if err != nil {
 		return err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	_, err = q.Exec(collectionID, planID, config.SC.Context)
 	if err != nil {
 		return err
@@ -286,7 +366,11 @@ func DeleteRunningPlan(collectionID, planID int64) error {
 	if err != nil {
 		return err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	_, err = q.Exec(collectionID, planID)
 	if err != nil {
 		return err
@@ -301,15 +385,26 @@ func GetRunningPlansByCollection(collectionID int64) ([]*RunningPlan, error) {
 	if err != nil {
 		return rps, err
 	}
-	defer q.Close()
+	defer func() {
+		if closeErr := q.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close prepared statement")
+		}
+	}()
 	rows, err := q.Query(collectionID)
 	if err != nil {
 		return rps, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close rows")
+		}
+	}()
 	for rows.Next() {
 		rp := new(RunningPlan)
-		rows.Scan(&rp.CollectionID, &rp.PlanID, &rp.StartedTime)
+		if err := rows.Scan(&rp.CollectionID, &rp.PlanID, &rp.StartedTime); err != nil {
+			log.WithError(err).Error("Failed to scan running plan")
+			continue
+		}
 		rps = append(rps, rp)
 	}
 	return rps, nil

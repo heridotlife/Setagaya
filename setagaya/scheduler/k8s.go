@@ -695,7 +695,11 @@ func (kcm *K8sClientManager) FetchLogFromPod(pod apiv1.Pod) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer readCloser.Close()
+	defer func() {
+		if closeErr := readCloser.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close read closer")
+		}
+	}()
 	c, err := io.ReadAll(readCloser)
 	if err != nil {
 		return "", err
@@ -738,7 +742,11 @@ func (kcm *K8sClientManager) ServiceReachable(engineUrl string) bool {
 		log.Warn(err)
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close response body")
+		}
+	}()
 	return resp.StatusCode == http.StatusOK
 }
 

@@ -30,7 +30,9 @@ func TestCreateAndGetPlan(t *testing.T) {
 	assert.Equal(t, name, p.Name)
 	assert.Equal(t, projectID, p.ProjectID)
 
-	p.Delete()
+	if err := p.Delete(); err != nil {
+		t.Logf("Failed to delete plan: %v", err)
+	}
 	p, err = GetPlan(planID)
 	assert.NotNil(t, err)
 	assert.Nil(t, p)
@@ -64,7 +66,9 @@ func TestGetRunningPlans(t *testing.T) {
 	assert.Equal(t, rp.CollectionID, collectionID)
 	assert.Equal(t, rp.PlanID, planID)
 
-	DeleteRunningPlan(collectionID, planID)
+	if err := DeleteRunningPlan(collectionID, planID); err != nil {
+		t.Logf("Failed to delete running plan: %v", err)
+	}
 	rps, err = GetRunningPlans()
 	if err != nil {
 		t.Fatal(err)
@@ -81,6 +85,8 @@ func TestMain(m *testing.M) {
 		log.Fatal(err)
 	}
 	r := m.Run()
-	setupAndTeardown()
+	if err := setupAndTeardown(); err != nil {
+		log.Errorf("Failed to teardown: %v", err)
+	}
 	os.Exit(r)
 }

@@ -38,12 +38,19 @@ func GetHistory(startedTime, endTime string) ([]*CollectionLaunchHistory, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rs.Close()
+	defer func() {
+		if closeErr := rs.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Failed to close rows")
+		}
+	}()
 
 	history := []*CollectionLaunchHistory{}
 	for rs.Next() {
 		lh := new(CollectionLaunchHistory)
-		rs.Scan(&lh.CollectionID, &lh.Context, &lh.Owner, &lh.Vu, &lh.StartedTime, &lh.EndTime)
+		if err := rs.Scan(&lh.CollectionID, &lh.Context, &lh.Owner, &lh.Vu, &lh.StartedTime, &lh.EndTime); err != nil {
+			log.WithError(err).Error("Failed to scan collection launch history")
+			continue
+		}
 		history = append(history, lh)
 	}
 	return history, nil
