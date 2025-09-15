@@ -232,10 +232,7 @@ func convertBoolToString(v bool) string {
 func convertNumericToString(value interface{}) string {
 	switch v := value.(type) {
 	case int:
-		// Safe conversion with boundary checking to prevent G115 integer overflow
-		if v > 9223372036854775807 || v < -9223372036854775808 {
-			return "large_int"
-		}
+		// Convert int to int64 safely
 		return convertIntToString(int64(v))
 	case int8:
 		return convertIntToString(int64(v))
@@ -254,10 +251,7 @@ func convertNumericToString(value interface{}) string {
 func convertUnsignedToString(value interface{}) string {
 	switch v := value.(type) {
 	case uint:
-		// Safe conversion with boundary checking to prevent G115 integer overflow
-		if v > 18446744073709551615 { // math.MaxUint64
-			return "large_uint"
-		}
+		// Convert uint to uint64 safely
 		return convertUintToString(uint64(v))
 	case uint8:
 		return convertIntToString(int64(v))
