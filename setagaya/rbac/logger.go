@@ -229,6 +229,10 @@ func convertToString(value interface{}) string {
 	case int64:
 		return convertIntToString(v)
 	case uint:
+		// Check for overflow before conversion
+		if v > 9223372036854775807 { // math.MaxInt64
+			return "large_uint"
+		}
 		return convertIntToString(int64(v))
 	case uint8:
 		return convertIntToString(int64(v))
@@ -237,6 +241,10 @@ func convertToString(value interface{}) string {
 	case uint32:
 		return convertIntToString(int64(v))
 	case uint64:
+		// Check for overflow before conversion
+		if v > 9223372036854775807 { // math.MaxInt64
+			return "large_uint64"
+		}
 		return convertIntToString(int64(v))
 	case float32, float64:
 		return "number"

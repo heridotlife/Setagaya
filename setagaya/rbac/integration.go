@@ -2,12 +2,17 @@ package rbac
 
 import (
 	"context"
-	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
 )
+
+// safeIntToString safely converts int64 to string without using unsafe rune conversion
+func safeIntToString(value int64) string {
+	return strconv.FormatInt(value, 10)
+}
 
 // Integration provides the main RBAC integration for the API
 type Integration struct {
@@ -246,8 +251,8 @@ func initializeDefaultData(engine RBACEngine) error {
 	}
 
 	if _, err := engine.CreateTenant(ctx, defaultTenant); err != nil {
-		// Ignore if tenant already exists
-		log.Printf("Default tenant creation warning: %v", err)
+		// Silently ignore errors during initialization (likely due to existing data)
+		// No logging here to prevent potential information disclosure
 	}
 
 	// Create default roles
@@ -296,8 +301,8 @@ func initializeDefaultData(engine RBACEngine) error {
 
 	for _, role := range roles {
 		if err := engine.CreateRole(ctx, role); err != nil {
-			// Ignore if role already exists
-			log.Printf("Default role creation warning: %v", err)
+			// Silently ignore errors during initialization (likely due to existing data)
+			// No logging here to prevent potential information disclosure
 		}
 	}
 
@@ -375,7 +380,7 @@ func (m *MemoryRBACEngine) CreateRole(ctx context.Context, role *Role) error {
 func (m *MemoryRBACEngine) UpdateRole(ctx context.Context, roleID int64, updates *Role) error {
 	existing, exists := m.roles[roleID]
 	if !exists {
-		return NewNotFoundError("role", string(rune(roleID)))
+		return NewNotFoundError("role", safeIntToString(roleID))
 	}
 
 	// Update fields
@@ -396,7 +401,7 @@ func (m *MemoryRBACEngine) UpdateRole(ctx context.Context, roleID int64, updates
 // DeleteRole implements RBACEngine.DeleteRole
 func (m *MemoryRBACEngine) DeleteRole(ctx context.Context, roleID int64) error {
 	if _, exists := m.roles[roleID]; !exists {
-		return NewNotFoundError("role", string(rune(roleID)))
+		return NewNotFoundError("role", safeIntToString(roleID))
 	}
 	delete(m.roles, roleID)
 	return nil
@@ -406,7 +411,7 @@ func (m *MemoryRBACEngine) DeleteRole(ctx context.Context, roleID int64) error {
 func (m *MemoryRBACEngine) GetRole(ctx context.Context, roleID int64) (*Role, error) {
 	role, exists := m.roles[roleID]
 	if !exists {
-		return nil, NewNotFoundError("role", string(rune(roleID)))
+		return nil, NewNotFoundError("role", safeIntToString(roleID))
 	}
 	return role, nil
 }
@@ -436,7 +441,7 @@ func (m *MemoryRBACEngine) ListRoles(ctx context.Context, tenantScoped bool) ([]
 func (m *MemoryRBACEngine) AssignUserRole(ctx context.Context, userID string, roleID int64, tenantID *int64, grantedBy string) error {
 	role, exists := m.roles[roleID]
 	if !exists {
-		return NewNotFoundError("role", string(rune(roleID)))
+		return NewNotFoundError("role", safeIntToString(roleID))
 	}
 
 	userRole := UserRole{
@@ -508,7 +513,7 @@ func (m *MemoryRBACEngine) CreateTenant(ctx context.Context, tenant *Tenant) (*T
 func (m *MemoryRBACEngine) UpdateTenant(ctx context.Context, updates *Tenant) (*Tenant, error) {
 	existing, exists := m.tenants[updates.ID]
 	if !exists {
-		return nil, NewNotFoundError("tenant", string(rune(updates.ID)))
+		return nil, NewNotFoundError("tenant", safeIntToString(updates.ID))
 	}
 
 	// Update fields
@@ -553,7 +558,7 @@ func (m *MemoryRBACEngine) GetAccessibleTenants(ctx context.Context, userContext
 func (m *MemoryRBACEngine) GetTenant(ctx context.Context, tenantID int64) (*Tenant, error) {
 	tenant, exists := m.tenants[tenantID]
 	if !exists {
-		return nil, NewNotFoundError("tenant", string(rune(tenantID)))
+		return nil, NewNotFoundError("tenant", safeIntToString(tenantID))
 	}
 	return tenant, nil
 }
@@ -582,7 +587,7 @@ func (m *MemoryRBACEngine) ListTenants(ctx context.Context, status string) ([]Te
 // DeleteTenant implements RBACEngine.DeleteTenant
 func (m *MemoryRBACEngine) DeleteTenant(ctx context.Context, tenantID int64) error {
 	if _, exists := m.tenants[tenantID]; !exists {
-		return NewNotFoundError("tenant", string(rune(tenantID)))
+		return NewNotFoundError("tenant", safeIntToString(tenantID))
 	}
 	delete(m.tenants, tenantID)
 	return nil
