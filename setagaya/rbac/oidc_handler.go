@@ -39,14 +39,21 @@ func (h *OIDCHandler) HandleLogin() httprouter.Handle {
 		// Generate CSRF state parameter with sufficient entropy
 		state, err := h.generateSecureState()
 		if err != nil {
-			h.logger.Error("Failed to generate state parameter", "error", err, "ip", r.RemoteAddr)
+			h.logger.Error("Failed to generate state parameter", "error", sanitizeForLogging(err.Error()), "ip", r.RemoteAddr)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
-		// Validate state parameter format
+		// Enhanced state parameter validation with additional security checks
 		if len(state) < 32 || len(state) > 256 {
 			h.logger.Error("Generated state parameter has invalid length", "length", len(state))
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		
+		// Additional validation for state parameter content
+		if !isValidStateParameter(state) {
+			h.logger.Error("Generated state parameter contains invalid characters")
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -514,4 +521,18 @@ func sanitizeForJSONStrict(input string) string {
 	}
 	
 	return sanitized
+}
+
+// isValidStateParameter validates that a state parameter contains only safe characters
+func isValidStateParameter(state string) bool {
+	for _, char := range state {
+		if !((char >= 'a' && char <= 'z') || 
+			 (char >= 'A' && char <= 'Z') || 
+			 (char >= '0' && char <= '9') || 
+			 char == '_' || char == '-' || char == '=' || 
+			 char == '+' || char == '/') { // Base64 URL-safe characters
+			return false
+		}
+	}
+	return true
 }

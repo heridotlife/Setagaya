@@ -128,16 +128,23 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 		})
 	}
 
-	// Validate session ID format for security (alphanumeric and safe characters only)
+	// Enhanced session ID format validation for security (alphanumeric and safe characters only)
+	// Use constant-time validation to prevent timing attacks
+	invalidCharFound := false
 	for _, char := range sessionID {
 		if !((char >= 'a' && char <= 'z') || 
 			 (char >= 'A' && char <= 'Z') || 
 			 (char >= '0' && char <= '9') || 
 			 char == '_' || char == '-' || char == '=') {
-			return nil, NewRBACError(ErrCodeInvalidSession, "Session ID contains invalid characters", map[string]interface{}{
-				"allowedChars": "a-z, A-Z, 0-9, _, -, =",
-			})
+			invalidCharFound = true
+			// Continue checking all characters to prevent timing attacks
 		}
+	}
+	
+	if invalidCharFound {
+		return nil, NewRBACError(ErrCodeInvalidSession, "Session ID contains invalid characters", map[string]interface{}{
+			"allowedChars": "a-z, A-Z, 0-9, _, -, =",
+		})
 	}
 
 	s.mu.RLock()
@@ -165,9 +172,24 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 		})
 	}
 
-	// Additional session data validation
+	// Additional session data validation with enhanced security checks
 	if entry.data == nil {
 		return nil, NewRBACError(ErrCodeInvalidSession, "Session data is corrupted", nil)
+	}
+	
+	// Validate session data integrity if it's a map (common pattern)
+	if sessionMap, ok := entry.data.(map[string]interface{}); ok {
+		// Check for suspicious data patterns that might indicate tampering
+		if len(sessionMap) > 50 { // Reasonable limit for session data fields
+			s.logger.Warn("Session contains unusually large number of fields", 
+				"sessionPrefix", sessionID[:minInt(8, len(sessionID))]+"...",
+				"fieldCount", len(sessionMap))
+		}
+		
+		// Validate critical session fields if they exist
+		if userContext, exists := sessionMap["userContext"]; exists && userContext == nil {
+			return nil, NewRBACError(ErrCodeInvalidSession, "Session user context is corrupted", nil)
+		}
 	}
 
 	// Log session access with minimal information (security)

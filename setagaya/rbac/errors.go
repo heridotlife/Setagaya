@@ -1,7 +1,7 @@
 package rbac
 
 import (
-	"fmt"
+	"strings"
 )
 
 // Error codes for RBAC operations
@@ -13,6 +13,7 @@ const (
 	ErrCodeSessionStoreFull    = "session_store_full"
 	ErrCodeTokenExchangeFailed = "token_exchange_failed"
 	ErrCodeInvalidToken        = "invalid_token"
+	ErrCodeCryptographicError  = "cryptographic_error"
 )
 
 // Error types for RBAC operations
@@ -23,7 +24,8 @@ type RBACError struct {
 }
 
 func (e *RBACError) Error() string {
-	return fmt.Sprintf("%s: %s", e.Type, e.Message)
+	// Safe string construction to prevent format string vulnerabilities
+	return sanitizeErrorType(e.Type) + ": " + sanitizeErrorMessage(e.Message)
 }
 
 // NewRBACError creates a new RBAC error with the specified code and message
@@ -72,12 +74,16 @@ func NewAuthenticationError(message string) *RBACError {
 }
 
 func NewNotFoundError(resource, id string) *RBACError {
+	// Safe string construction to prevent format string vulnerabilities with user-controlled data
+	sanitizedResource := sanitizeErrorInput(resource)
+	sanitizedID := sanitizeErrorInput(id)
+	
 	return &RBACError{
 		Type:    "not_found",
-		Message: fmt.Sprintf("%s with ID %s not found", resource, id),
+		Message: sanitizedResource + " with ID " + sanitizedID + " not found",
 		Details: map[string]interface{}{
-			"resource": resource,
-			"id":       id,
+			"resource": sanitizedResource,
+			"id":       sanitizedID,
 		},
 	}
 }
@@ -157,4 +163,84 @@ func IsForbiddenError(err error) bool {
 // IsInternalError checks if error is an internal error
 func IsInternalError(err error) bool {
 	return IsErrorType(err, "internal_error")
+}
+
+// sanitizeErrorType safely sanitizes error type strings to prevent injection
+func sanitizeErrorType(errorType string) string {
+	if len(errorType) == 0 {
+		return "unknown_error"
+	}
+	
+	// Only allow alphanumeric and underscores for error types
+	sanitized := ""
+	for _, char := range errorType {
+		if (char >= 'a' && char <= 'z') || 
+		   (char >= 'A' && char <= 'Z') || 
+		   (char >= '0' && char <= '9') || 
+		   char == '_' {
+			sanitized += string(char)
+		}
+	}
+	
+	// Limit length
+	if len(sanitized) > 50 {
+		sanitized = sanitized[:50]
+	}
+	
+	if len(sanitized) == 0 {
+		return "sanitized_error"
+	}
+	
+	return sanitized
+}
+
+// sanitizeErrorMessage safely sanitizes error messages to prevent injection and information disclosure
+func sanitizeErrorMessage(message string) string {
+	if len(message) == 0 {
+		return "An error occurred"
+	}
+	
+	// Replace control characters and potentially dangerous sequences
+	sanitized := strings.ReplaceAll(message, "\n", " ")
+	sanitized = strings.ReplaceAll(sanitized, "\r", " ")
+	sanitized = strings.ReplaceAll(sanitized, "\t", " ")
+	sanitized = strings.ReplaceAll(sanitized, "\"", "'")
+	sanitized = strings.ReplaceAll(sanitized, "<", "&lt;")
+	sanitized = strings.ReplaceAll(sanitized, ">", "&gt;")
+	
+	// Limit length to prevent buffer overflow
+	if len(sanitized) > 200 {
+		sanitized = sanitized[:197] + "..."
+	}
+	
+	return sanitized
+}
+
+// sanitizeErrorInput safely sanitizes user input for error messages
+func sanitizeErrorInput(input string) string {
+	if len(input) == 0 {
+		return "unknown"
+	}
+	
+	// Very strict sanitization for user inputs in error messages
+	sanitized := ""
+	for _, char := range input {
+		if (char >= 'a' && char <= 'z') || 
+		   (char >= 'A' && char <= 'Z') || 
+		   (char >= '0' && char <= '9') || 
+		   char == '_' || char == '-' {
+			sanitized += string(char)
+		}
+	}
+	
+	// Limit length
+	if len(sanitized) > 30 {
+		sanitized = sanitized[:30]
+	}
+	
+	if len(sanitized) == 0 {
+		return "sanitized_input"
+	}
+	
+	return sanitized
 }

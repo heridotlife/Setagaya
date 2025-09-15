@@ -6,7 +6,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
 	"strings"
 	"time"
 
@@ -40,14 +39,17 @@ func NewOktaAuthProvider(config *OktaConfig, logger Logger) (*OktaAuthProvider, 
 		RedirectURL:  config.RedirectURI,
 		Scopes:       config.Scopes,
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  fmt.Sprintf("https://%s/oauth2/default/v1/authorize", config.Domain),
-			TokenURL: fmt.Sprintf("https://%s/oauth2/default/v1/token", config.Domain),
+			// Validate domain to prevent injection attacks before URL construction
+			AuthURL:  "https://" + sanitizeDomainForURL(config.Domain) + "/oauth2/default/v1/authorize",
+			TokenURL: "https://" + sanitizeDomainForURL(config.Domain) + "/oauth2/default/v1/token",
 		},
 	}
 
 	// Initialize with a mock RSA public key for testing
 	if err := provider.initMockPublicKey(); err != nil {
-		return nil, fmt.Errorf("failed to initialize mock public key: %w", err)
+		return nil, NewRBACError(ErrCodeInvalidConfig, "Failed to initialize mock public key", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
 	logger.Info("Okta auth provider initialized", "domain", config.Domain, "clientID", config.ClientID)
@@ -65,7 +67,9 @@ func (p *OktaAuthProvider) initMockPublicKey() error {
 	// Generate a proper RSA key pair for testing instead of using hardcoded material
 	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return fmt.Errorf("failed to generate RSA key: %w", err)
+		return NewRBACError(ErrCodeCryptographicError, "Failed to generate RSA key", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
 	// Use the public key from the generated pair
@@ -75,7 +79,9 @@ func (p *OktaAuthProvider) initMockPublicKey() error {
 	// Generate a PEM representation and validate it
 	pubKeyDER, err := x509.MarshalPKIXPublicKey(&privKey.PublicKey)
 	if err != nil {
-		return fmt.Errorf("failed to marshal public key: %w", err)
+		return NewRBACError(ErrCodeCryptographicError, "Failed to marshal public key", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
 	pemBlock := &pem.Block{
@@ -85,36 +91,45 @@ func (p *OktaAuthProvider) initMockPublicKey() error {
 
 	pemData := pem.EncodeToMemory(pemBlock)
 	if pemData == nil {
-		return fmt.Errorf("failed to encode PEM data")
+		return NewRBACError(ErrCodeCryptographicError, "Failed to encode PEM data", nil)
 	}
 
 	// Validate PEM decoding with comprehensive error handling
 	decodedBlock, rest := pem.Decode(pemData)
 	if decodedBlock == nil {
-		return fmt.Errorf("failed to decode generated PEM block: invalid PEM format")
+		return NewRBACError(ErrCodeCryptographicError, "Failed to decode generated PEM block: invalid PEM format", nil)
 	}
 
 	// Ensure no trailing data exists after PEM block
 	if len(rest) > 0 {
 		p.logger.Warn("Unexpected data after PEM block during validation", "length", len(rest))
-		return fmt.Errorf("invalid PEM format: unexpected trailing data")
+		return NewRBACError(ErrCodeCryptographicError, "Invalid PEM format: unexpected trailing data", map[string]interface{}{
+			"trailingDataLength": len(rest),
+		})
 	}
 
 	// Validate PEM block type strictly
 	if decodedBlock.Type != "PUBLIC KEY" {
-		return fmt.Errorf("invalid PEM block type: expected 'PUBLIC KEY', got '%s'", decodedBlock.Type)
+		// Safe error construction to prevent format string vulnerabilities with user-controlled PEM data
+		errorMsg := "invalid PEM block type: expected 'PUBLIC KEY', got '" + sanitizeErrorString(decodedBlock.Type) + "'"
+		return &RBACError{
+			Type: "invalid_pem_block",
+			Message: errorMsg,
+		}
 	}
 
 	// Re-parse the key to ensure validity
 	parsedPubKey, err := x509.ParsePKIXPublicKey(decodedBlock.Bytes)
 	if err != nil {
-		return fmt.Errorf("failed to parse generated public key: %w", err)
+		return NewRBACError(ErrCodeCryptographicError, "Failed to parse generated public key", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
 	// Ensure it's an RSA key
 	_, ok := parsedPubKey.(*rsa.PublicKey)
 	if !ok {
-		return fmt.Errorf("generated key is not an RSA public key")
+		return NewRBACError(ErrCodeCryptographicError, "Generated key is not an RSA public key", nil)
 	}
 
 	p.logger.Info("Generated and validated mock RSA public key for testing",
@@ -170,7 +185,9 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 	// Validate each part is not empty
 	for i, part := range parts {
 		if len(part) == 0 {
-			return nil, NewRBACError(ErrCodeInvalidToken, fmt.Sprintf("JWT part %d is empty", i+1), nil)
+			// Use safe string construction to prevent format string vulnerabilities
+			partNumber := convertIntToString(int64(i + 1))
+			return nil, NewRBACError(ErrCodeInvalidToken, "JWT part " + partNumber + " is empty", nil)
 		}
 	}
 
@@ -179,14 +196,21 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 		// Verify the signing method - only allow RSA
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			p.logger.Warn("Unexpected JWT signing method", "method", token.Header["alg"])
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			return nil, NewRBACError(ErrCodeInvalidToken, "Unexpected signing method", map[string]interface{}{
+				"method": token.Header["alg"],
+			})
 		}
 		
 		// Additional algorithm validation
 		if alg, ok := token.Header["alg"].(string); ok {
 			if alg != "RS256" && alg != "RS384" && alg != "RS512" {
 				p.logger.Warn("Unsupported RSA algorithm", "algorithm", alg)
-				return nil, fmt.Errorf("unsupported RSA algorithm: %s", alg)
+				// Safe error construction to prevent format string vulnerabilities
+				errorMsg := "unsupported RSA algorithm: " + sanitizeErrorString(alg)
+				return nil, &RBACError{
+					Type: "unsupported_algorithm",
+					Message: errorMsg,
+				}
 			}
 		}
 
@@ -238,10 +262,63 @@ func (p *OktaAuthProvider) ValidateJWT(tokenString string) (*OktaClaims, error) 
 	}
 
 	p.logger.Debug("JWT validation successful", 
-		"subject", claims.Subject, 
-		"email", claims.Email,
-		"issuer", claims.Issuer)
+		"subject", sanitizeForLogging(claims.Subject), 
+		"email", sanitizeForLogging(claims.Email),
+		"issuer", sanitizeForLogging(claims.Issuer))
 	return claims, nil
+}
+
+// sanitizeErrorString safely sanitizes strings for use in error messages
+func sanitizeErrorString(input string) string {
+	if len(input) == 0 {
+		return "empty"
+	}
+	
+	// Replace potentially dangerous characters
+	sanitized := strings.ReplaceAll(input, "\n", "\\n")
+	sanitized = strings.ReplaceAll(sanitized, "\r", "\\r")
+	sanitized = strings.ReplaceAll(sanitized, "\t", "\\t")
+	sanitized = strings.ReplaceAll(sanitized, "\"", "\\\"")
+	sanitized = strings.ReplaceAll(sanitized, "'", "\\'")
+	
+	// Limit length to prevent buffer overflow
+	if len(sanitized) > 50 {
+		sanitized = sanitized[:47] + "..."
+	}
+	
+	return sanitized
+}
+
+// sanitizeDomainForURL safely validates and sanitizes domain names for URL construction
+func sanitizeDomainForURL(domain string) string {
+	if len(domain) == 0 {
+		return "invalid-domain"
+	}
+	
+	// Validate domain length
+	if len(domain) > 253 {
+		return "invalid-domain-too-long"
+	}
+	
+	// Basic domain validation - only allow alphanumeric, dots, and hyphens
+	for _, char := range domain {
+		if !((char >= 'a' && char <= 'z') || 
+			 (char >= 'A' && char <= 'Z') || 
+			 (char >= '0' && char <= '9') || 
+			 char == '.' || char == '-') {
+			return "invalid-domain-chars"
+		}
+	}
+	
+	// Additional security: prevent obvious injection attempts
+	if strings.Contains(domain, "..") || 
+	   strings.Contains(domain, "//") ||
+	   strings.Contains(domain, "@") ||
+	   strings.Contains(domain, ":") {
+		return "invalid-domain-format"
+	}
+	
+	return domain
 }
 
 // MapGroupsToRoles maps Okta groups to Setagaya roles

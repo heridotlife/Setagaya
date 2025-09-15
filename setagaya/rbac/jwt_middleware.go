@@ -37,10 +37,10 @@ func NewJWTMiddleware(authProvider *OktaAuthProvider, rbacEngine RBACEngine, log
 // RequireAuthentication returns a middleware that requires valid JWT authentication
 func (m *JWTMiddleware) RequireAuthentication() httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		// Extract JWT token from Authorization header
+		// Extract JWT token from Authorization header with enhanced validation
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			m.logger.Warn("Missing Authorization header", "path", r.URL.Path, "method", r.Method, "ip", r.RemoteAddr)
+			m.logger.Warn("Missing Authorization header", "path", sanitizeForLogging(r.URL.Path), "method", r.Method, "ip", r.RemoteAddr)
 			http.Error(w, "Authorization required", http.StatusUnauthorized)
 			return
 		}
@@ -52,9 +52,9 @@ func (m *JWTMiddleware) RequireAuthentication() httprouter.Handle {
 			return
 		}
 
-		// Check for Bearer token format
+		// Check for Bearer token format with enhanced validation
 		if !strings.HasPrefix(authHeader, "Bearer ") {
-			m.logger.Warn("Invalid Authorization header format", "path", r.URL.Path, "method", r.Method, "ip", r.RemoteAddr)
+			m.logger.Warn("Invalid Authorization header format", "path", sanitizeForLogging(r.URL.Path), "method", r.Method, "ip", r.RemoteAddr)
 			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
 			return
 		}
@@ -68,10 +68,10 @@ func (m *JWTMiddleware) RequireAuthentication() httprouter.Handle {
 			return
 		}
 
-		// Validate JWT token
+		// Validate JWT token with enhanced security logging
 		claims, err := m.authProvider.ValidateJWT(tokenString)
 		if err != nil {
-			m.logger.Error("JWT validation failed", "error", err, "path", r.URL.Path, "method", r.Method, "ip", r.RemoteAddr)
+			m.logger.Error("JWT validation failed", "error", sanitizeForLogging(err.Error()), "path", sanitizeForLogging(r.URL.Path), "method", r.Method, "ip", r.RemoteAddr)
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
@@ -84,9 +84,9 @@ func (m *JWTMiddleware) RequireAuthentication() httprouter.Handle {
 		*r = *r.WithContext(ctx)
 
 		m.logger.Debug("JWT authentication successful",
-			"userID", userContext.UserID,
-			"email", userContext.Email,
-			"path", r.URL.Path)
+			"userID", sanitizeForLogging(userContext.UserID),
+			"email", sanitizeForLogging(userContext.Email),
+			"path", sanitizeForLogging(r.URL.Path))
 
 		// Continue to next handler (this would be the actual API handler)
 		// For now, we'll just return success
@@ -122,14 +122,14 @@ func (m *JWTMiddleware) RequirePermission(resource, action string) httprouter.Ha
 			return
 		}
 
-		// Check permission
+		// Check permission with enhanced security validation
 		hasPermission := m.checkPermission(userContext, resource, action)
 		if !hasPermission {
 			m.logger.Warn("Permission denied",
-				"userID", userContext.UserID,
-				"resource", resource,
-				"action", action,
-				"path", r.URL.Path)
+				"userID", sanitizeForLogging(userContext.UserID),
+				"resource", sanitizeForLogging(resource),
+				"action", sanitizeForLogging(action),
+				"path", sanitizeForLogging(r.URL.Path))
 
 			// Log audit entry
 			m.logAuditEvent(userContext, resource, action, "DENIED", r)
@@ -142,9 +142,9 @@ func (m *JWTMiddleware) RequirePermission(resource, action string) httprouter.Ha
 		m.logAuditEvent(userContext, resource, action, "GRANTED", r)
 
 		m.logger.Debug("Permission check passed",
-			"userID", userContext.UserID,
-			"resource", resource,
-			"action", action)
+			"userID", sanitizeForLogging(userContext.UserID),
+			"resource", sanitizeForLogging(resource),
+			"action", sanitizeForLogging(action))
 
 		// Continue to next handler
 		w.Header().Set("Content-Type", "application/json")
@@ -312,21 +312,21 @@ func (m *JWTMiddleware) matchesPermissionWithActions(permission Permission, reso
 	return false
 }
 
-// logAuditEvent logs an audit event for permission checks
+// logAuditEvent logs an audit event for permission checks with enhanced security
 func (m *JWTMiddleware) logAuditEvent(userContext *UserContext, resource, action, result string, r *http.Request) {
 	auditEntry := &AuditLogEntry{
-		UserID:       userContext.UserID,
-		UserEmail:    userContext.Email,
-		SessionID:    userContext.SessionID,
-		Action:       action,
-		ResourceType: resource,
-		Result:       result,
+		UserID:       sanitizeForLogging(userContext.UserID),
+		UserEmail:    sanitizeForLogging(userContext.Email),
+		SessionID:    sanitizeForLogging(userContext.SessionID),
+		Action:       sanitizeForLogging(action),
+		ResourceType: sanitizeForLogging(resource),
+		Result:       sanitizeForLogging(result),
 		Timestamp:    time.Now(),
 		IPAddress:    r.RemoteAddr,
-		UserAgent:    r.UserAgent(),
+		UserAgent:    sanitizeForLogging(r.UserAgent()),
 		RequestDetails: map[string]interface{}{
 			"method": r.Method,
-			"path":   r.URL.Path,
+			"path":   sanitizeForLogging(r.URL.Path),
 		},
 	}
 
@@ -339,22 +339,22 @@ func (m *JWTMiddleware) logAuditEvent(userContext *UserContext, resource, action
 		"ip", auditEntry.IPAddress)
 }
 
-// logTenantAuditEvent logs a tenant-specific audit event
+// logTenantAuditEvent logs a tenant-specific audit event with enhanced security
 func (m *JWTMiddleware) logTenantAuditEvent(userContext *UserContext, tenantID int64, resource, action, result string, r *http.Request) {
 	auditEntry := &AuditLogEntry{
-		UserID:       userContext.UserID,
-		UserEmail:    userContext.Email,
-		SessionID:    userContext.SessionID,
+		UserID:       sanitizeForLogging(userContext.UserID),
+		UserEmail:    sanitizeForLogging(userContext.Email),
+		SessionID:    sanitizeForLogging(userContext.SessionID),
 		TenantID:     &tenantID,
-		Action:       action,
-		ResourceType: resource,
-		Result:       result,
+		Action:       sanitizeForLogging(action),
+		ResourceType: sanitizeForLogging(resource),
+		Result:       sanitizeForLogging(result),
 		Timestamp:    time.Now(),
 		IPAddress:    r.RemoteAddr,
-		UserAgent:    r.UserAgent(),
+		UserAgent:    sanitizeForLogging(r.UserAgent()),
 		RequestDetails: map[string]interface{}{
 			"method":   r.Method,
-			"path":     r.URL.Path,
+			"path":     sanitizeForLogging(r.URL.Path),
 			"tenantId": tenantID,
 		},
 	}
@@ -383,6 +383,25 @@ func sanitizeForJSON(input string) string {
 	// Limit length to prevent buffer overflow
 	if len(sanitized) > 256 {
 		sanitized = sanitized[:253] + "..."
+	}
+	
+	return sanitized
+}
+
+// sanitizeForLogging safely sanitizes data for logging to prevent log injection
+func sanitizeForLogging(input string) string {
+	if len(input) == 0 {
+		return ""
+	}
+	
+	// Replace control characters
+	sanitized := strings.ReplaceAll(input, "\n", "\\n")
+	sanitized = strings.ReplaceAll(sanitized, "\r", "\\r")
+	sanitized = strings.ReplaceAll(sanitized, "\t", "\\t")
+	
+	// Limit length to prevent log flooding
+	if len(sanitized) > 100 {
+		sanitized = sanitized[:97] + "..."
 	}
 	
 	return sanitized
