@@ -526,11 +526,12 @@ func sanitizeForJSONStrict(input string) string {
 // isValidStateParameter validates that a state parameter contains only safe characters
 func isValidStateParameter(state string) bool {
 	for _, char := range state {
-		if !((char >= 'a' && char <= 'z') ||
-			(char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') ||
-			char == '_' || char == '-' || char == '=' ||
-			char == '+' || char == '/') { // Base64 URL-safe characters
+		// Check for invalid characters (applying De Morgan's law)
+		if (char < 'a' || char > 'z') &&
+			(char < 'A' || char > 'Z') &&
+			(char < '0' || char > '9') &&
+			char != '_' && char != '-' && char != '=' &&
+			char != '+' && char != '/' { // Base64 URL-safe characters
 			return false
 		}
 	}
