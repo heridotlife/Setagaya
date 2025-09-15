@@ -2,6 +2,7 @@ package rbac
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 )
@@ -43,6 +44,13 @@ func NewMemorySessionStore(logger Logger) SessionStore {
 }
 
 // Set stores session data with enhanced validation and security
+// sanitizeLogString removes CR and LF characters to prevent log injection.
+func sanitizeLogString(s string) string {
+	s = strings.ReplaceAll(s, "\n", "")
+	s = strings.ReplaceAll(s, "\r", "")
+	return s
+}
+
 func (s *MemorySessionStore) Set(ctx context.Context, sessionID string, data interface{}, ttl time.Duration) error {
 	// Enhanced session ID validation
 	if len(sessionID) == 0 {
@@ -101,7 +109,7 @@ func (s *MemorySessionStore) Set(ctx context.Context, sessionID string, data int
 	}
 
 	s.logger.Debug("Session stored successfully", 
-		"sessionPrefix", sessionID[:minInt(8, len(sessionID))]+"...",
+		"sessionPrefix", sanitizeLogString(sessionID[:minInt(8, len(sessionID))])+"...",
 		"ttl", ttl.String(),
 		"totalSessions", len(s.sessions))
 	return nil
@@ -182,7 +190,7 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 		// Check for suspicious data patterns that might indicate tampering
 		if len(sessionMap) > 50 { // Reasonable limit for session data fields
 			s.logger.Warn("Session contains unusually large number of fields", 
-				"sessionPrefix", sessionID[:minInt(8, len(sessionID))]+"...",
+				"sessionPrefix", sanitizeLogString(sessionID[:minInt(8, len(sessionID))])+"...",
 				"fieldCount", len(sessionMap))
 		}
 		
@@ -194,7 +202,7 @@ func (s *MemorySessionStore) Get(ctx context.Context, sessionID string) (interfa
 
 	// Log session access with minimal information (security)
 	s.logger.Debug("Session retrieved successfully", 
-		"sessionPrefix", sessionID[:minInt(8, len(sessionID))]+"...",
+		"sessionPrefix", sanitizeLogString(sessionID[:minInt(8, len(sessionID))])+"...",
 		"expiresIn", entry.expiresAt.Sub(now).String())
 	
 	return entry.data, nil
