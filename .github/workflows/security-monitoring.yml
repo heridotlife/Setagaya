@@ -122,7 +122,7 @@ jobs:
         docker build -f setagaya/Dockerfile.engines.jmeter -t setagaya-jmeter-monitor:latest .
 
     - name: Scan with Trivy
-      uses: aquasecurity/trivy-action@0.28.0
+      uses: aquasecurity/trivy-action@0.33.1
       with:
         image-ref: 'setagaya-monitor:latest'
         format: 'json'
@@ -269,7 +269,7 @@ jobs:
         output-file: sbom.spdx.json
 
     - name: Scan SBOM for vulnerabilities
-      uses: anchore/scan-action@v3
+      uses: anchore/scan-action@v6
       continue-on-error: true
       with:
         sbom: sbom.spdx.json

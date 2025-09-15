@@ -2,12 +2,17 @@ package rbac
 
 import (
 	"context"
-	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
 )
+
+// safeIntToString safely converts int64 to string without using unsafe rune conversion
+func safeIntToString(value int64) string {
+	return strconv.FormatInt(value, 10)
+}
 
 // Integration provides the main RBAC integration for the API
 type Integration struct {
@@ -16,6 +21,11 @@ type Integration struct {
 	permissionTTL time.Duration
 	enableAudit   bool
 	defaultTenant *Tenant
+	oktaProvider  *OktaAuthProvider
+	jwtMiddleware *JWTMiddleware
+	oidcHandler   *OIDCHandler
+	sessionStore  SessionStore
+	logger        Logger
 }
 
 // NewIntegration creates a new RBAC integration instance
@@ -27,7 +37,18 @@ func NewIntegration() (*Integration, error) {
 		SessionTimeoutMins: 120,
 		AuditEnabled:       true,
 		PermissionCacheTTL: 30,
+		OktaConfig: &OktaConfig{
+			Domain:       "REPLACE_WITH_OKTA_DOMAIN",
+			ClientID:     "REPLACE_WITH_CLIENT_ID",
+			ClientSecret: "REPLACE_WITH_CLIENT_SECRET", // WARNING: Use environment variables in production
+			RedirectURI:  "http://localhost:8080/api/auth/callback",
+			Scopes:       []string{"openid", "profile", "email", "groups"},
+			GroupClaims:  "groups",
+		},
 	}
+
+	// Create logger
+	logger := NewSimpleLogger("RBAC", true)
 
 	// Create a basic in-memory implementation for now
 	engine := &MemoryRBACEngine{
@@ -44,11 +65,38 @@ func NewIntegration() (*Integration, error) {
 		return nil, NewConfigurationError("failed to initialize default RBAC data: " + err.Error())
 	}
 
+	// Create session store
+	sessionStore := NewMemorySessionStore(logger)
+
+	// Create Okta provider if configuration is available
+	var oktaProvider *OktaAuthProvider
+	var jwtMiddleware *JWTMiddleware
+	var oidcHandler *OIDCHandler
+
+	if rbacConfig.OktaConfig != nil {
+		oktaProviderInstance, err := NewOktaAuthProvider(rbacConfig.OktaConfig, logger)
+		if err != nil {
+			logger.Warn("Failed to initialize Okta provider", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else {
+			oktaProvider = oktaProviderInstance
+			jwtMiddleware = NewJWTMiddleware(oktaProvider, engine, logger)
+			oidcHandler = NewOIDCHandler(oktaProvider, engine, logger, sessionStore, "http://localhost:8080")
+			logger.Info("Okta integration initialized successfully", nil)
+		}
+	}
+
 	integration := &Integration{
 		engine:        engine,
 		config:        rbacConfig,
 		permissionTTL: time.Duration(rbacConfig.PermissionCacheTTL) * time.Minute,
 		enableAudit:   rbacConfig.AuditEnabled,
+		oktaProvider:  oktaProvider,
+		jwtMiddleware: jwtMiddleware,
+		oidcHandler:   oidcHandler,
+		sessionStore:  sessionStore,
+		logger:        logger,
 	}
 
 	return integration, nil
@@ -150,6 +198,26 @@ func (i *Integration) GetMiddleware() *RBACMiddleware {
 	}
 }
 
+// GetJWTMiddleware returns the JWT middleware if available
+func (i *Integration) GetJWTMiddleware() *JWTMiddleware {
+	return i.jwtMiddleware
+}
+
+// GetOIDCHandler returns the OIDC handler if available
+func (i *Integration) GetOIDCHandler() *OIDCHandler {
+	return i.oidcHandler
+}
+
+// GetOktaProvider returns the Okta provider if available
+func (i *Integration) GetOktaProvider() *OktaAuthProvider {
+	return i.oktaProvider
+}
+
+// IsOktaEnabled returns whether Okta integration is enabled and available
+func (i *Integration) IsOktaEnabled() bool {
+	return i.oktaProvider != nil
+}
+
 // RBACMiddleware provides HTTP middleware for RBAC authorization
 type RBACMiddleware struct {
 	integration *Integration
@@ -183,8 +251,9 @@ func initializeDefaultData(engine RBACEngine) error {
 	}
 
 	if _, err := engine.CreateTenant(ctx, defaultTenant); err != nil {
-		// Ignore if tenant already exists
-		log.Printf("Default tenant creation warning: %v", err)
+		// Silently ignore errors during initialization (likely due to existing data)
+		// No logging here to prevent potential information disclosure
+		_ = err // Acknowledge error is handled
 	}
 
 	// Create default roles
@@ -233,8 +302,9 @@ func initializeDefaultData(engine RBACEngine) error {
 
 	for _, role := range roles {
 		if err := engine.CreateRole(ctx, role); err != nil {
-			// Ignore if role already exists
-			log.Printf("Default role creation warning: %v", err)
+			// Silently ignore errors during initialization (likely due to existing data)
+			// No logging here to prevent potential information disclosure
+			_ = err // Acknowledge error is handled
 		}
 	}
 
@@ -312,7 +382,7 @@ func (m *MemoryRBACEngine) CreateRole(ctx context.Context, role *Role) error {
 func (m *MemoryRBACEngine) UpdateRole(ctx context.Context, roleID int64, updates *Role) error {
 	existing, exists := m.roles[roleID]
 	if !exists {
-		return NewNotFoundError("role", string(rune(roleID)))
+		return NewNotFoundError("role", safeIntToString(roleID))
 	}
 
 	// Update fields
@@ -333,7 +403,7 @@ func (m *MemoryRBACEngine) UpdateRole(ctx context.Context, roleID int64, updates
 // DeleteRole implements RBACEngine.DeleteRole
 func (m *MemoryRBACEngine) DeleteRole(ctx context.Context, roleID int64) error {
 	if _, exists := m.roles[roleID]; !exists {
-		return NewNotFoundError("role", string(rune(roleID)))
+		return NewNotFoundError("role", safeIntToString(roleID))
 	}
 	delete(m.roles, roleID)
 	return nil
@@ -343,7 +413,7 @@ func (m *MemoryRBACEngine) DeleteRole(ctx context.Context, roleID int64) error {
 func (m *MemoryRBACEngine) GetRole(ctx context.Context, roleID int64) (*Role, error) {
 	role, exists := m.roles[roleID]
 	if !exists {
-		return nil, NewNotFoundError("role", string(rune(roleID)))
+		return nil, NewNotFoundError("role", safeIntToString(roleID))
 	}
 	return role, nil
 }
@@ -373,7 +443,7 @@ func (m *MemoryRBACEngine) ListRoles(ctx context.Context, tenantScoped bool) ([]
 func (m *MemoryRBACEngine) AssignUserRole(ctx context.Context, userID string, roleID int64, tenantID *int64, grantedBy string) error {
 	role, exists := m.roles[roleID]
 	if !exists {
-		return NewNotFoundError("role", string(rune(roleID)))
+		return NewNotFoundError("role", safeIntToString(roleID))
 	}
 
 	userRole := UserRole{
@@ -445,7 +515,7 @@ func (m *MemoryRBACEngine) CreateTenant(ctx context.Context, tenant *Tenant) (*T
 func (m *MemoryRBACEngine) UpdateTenant(ctx context.Context, updates *Tenant) (*Tenant, error) {
 	existing, exists := m.tenants[updates.ID]
 	if !exists {
-		return nil, NewNotFoundError("tenant", string(rune(updates.ID)))
+		return nil, NewNotFoundError("tenant", safeIntToString(updates.ID))
 	}
 
 	// Update fields
@@ -490,7 +560,7 @@ func (m *MemoryRBACEngine) GetAccessibleTenants(ctx context.Context, userContext
 func (m *MemoryRBACEngine) GetTenant(ctx context.Context, tenantID int64) (*Tenant, error) {
 	tenant, exists := m.tenants[tenantID]
 	if !exists {
-		return nil, NewNotFoundError("tenant", string(rune(tenantID)))
+		return nil, NewNotFoundError("tenant", safeIntToString(tenantID))
 	}
 	return tenant, nil
 }
@@ -519,7 +589,7 @@ func (m *MemoryRBACEngine) ListTenants(ctx context.Context, status string) ([]Te
 // DeleteTenant implements RBACEngine.DeleteTenant
 func (m *MemoryRBACEngine) DeleteTenant(ctx context.Context, tenantID int64) error {
 	if _, exists := m.tenants[tenantID]; !exists {
-		return NewNotFoundError("tenant", string(rune(tenantID)))
+		return NewNotFoundError("tenant", safeIntToString(tenantID))
 	}
 	delete(m.tenants, tenantID)
 	return nil

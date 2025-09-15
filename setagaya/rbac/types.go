@@ -52,10 +52,19 @@ type UserRole struct {
 	GrantedBy string     `json:"granted_by" db:"granted_by"`           // Who granted this role
 	ExpiresAt *time.Time `json:"expires_at,omitempty" db:"expires_at"` // NULL for permanent
 	IsActive  bool       `json:"is_active" db:"is_active"`
+	CreatedAt time.Time  `json:"created_at" db:"created_at"`
 
 	// Populated via joins
 	Role   *Role   `json:"role,omitempty"`
 	Tenant *Tenant `json:"tenant,omitempty"`
+}
+
+// SimpleUserContext represents the basic authenticated user's context for integration
+type SimpleUserContext struct {
+	UserID   string   `json:"user_id"`
+	Email    string   `json:"email"`
+	Roles    []string `json:"roles"`
+	TenantID *int64   `json:"tenant_id,omitempty"`
 }
 
 // UserContext represents the complete user authorization context
@@ -132,7 +141,7 @@ type PermissionCache struct {
 const (
 	RoleServiceProviderAdmin   = "service_provider_admin"
 	RoleServiceProviderSupport = "service_provider_support"
-	RolePJMLoadtest            = "pjm_loadtest"
+	RolePJMLoadTest            = "pjm_loadtest"
 	RoleTenantAdmin            = "tenant_admin"
 	RoleTenantEditor           = "tenant_editor"
 	RoleTenantViewer           = "tenant_viewer"

@@ -514,7 +514,7 @@ func TestRoleConstants(t *testing.T) {
 	expectedRoles := []string{
 		RoleServiceProviderAdmin,
 		RoleServiceProviderSupport,
-		RolePJMLoadtest,
+		RolePJMLoadTest,
 		RoleTenantAdmin,
 		RoleTenantEditor,
 		RoleTenantViewer,

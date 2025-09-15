@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -115,71 +116,98 @@ func (s *SetagayaAPI) projectsGetHandler(w http.ResponseWriter, r *http.Request,
 		s.handleErrors(w, makeInvalidRequestError("account"))
 		return
 	}
-	qs := r.URL.Query()
-	var includeCollections, includePlans bool
-	var err error
 
-	includeCollectionsList := qs["include_collections"]
-	includePlansList := qs["include_plans"]
-	if len(includeCollectionsList) > 0 {
-		if includeCollections, err = strconv.ParseBool(includeCollectionsList[0]); err != nil {
-			includeCollections = false
-		}
-	} else {
-		includeCollections = false
-	}
+	// Parse query parameters for optional includes
+	includeOptions := s.parseProjectIncludes(r.URL.Query())
 
-	if len(includePlansList) > 0 {
-		if includePlans, err = strconv.ParseBool(includePlansList[0]); err != nil {
-			includePlans = false
-		}
-	} else {
-		includePlans = false
-	}
-
-	var projects []*model.Project
-	if s.enableRBAC && s.rbacIntegration != nil {
-		// Use RBAC-aware project filtering
-		result, rbacErr := s.rbacIntegration.GetProjectsByOwnersWithTenantFilter(account.ML, account)
-		if rbacErr != nil || result == nil {
-			// Fall back to legacy method if RBAC filtering fails
-			projects, err = model.GetProjectsByOwners(account.ML)
-		} else {
-			// Type assert the result
-			if projectList, ok := result.([]*model.Project); ok {
-				projects = projectList
-			} else {
-				// Fallback if type assertion fails
-				projects, err = model.GetProjectsByOwners(account.ML)
-			}
-		}
-	} else {
-		// Fallback to legacy method
-		projects, err = model.GetProjectsByOwners(account.ML)
-	}
-
+	// Get projects with RBAC-aware filtering
+	projects, err := s.getProjectsWithRBACFilter(account)
 	if err != nil {
 		s.handleErrors(w, err)
 		return
 	}
 
-	if !includeCollections && !includePlans {
+	// Return simple projects if no includes requested
+	if !includeOptions.includeCollections && !includeOptions.includePlans {
 		s.jsonise(w, http.StatusOK, projects)
 		return
 	}
+
+	// Enhance projects with requested includes
+	s.enhanceProjectsWithIncludes(projects, includeOptions)
+	s.jsonise(w, http.StatusOK, projects)
+}
+
+// projectIncludeOptions defines what to include in project response
+type projectIncludeOptions struct {
+	includeCollections bool
+	includePlans       bool
+}
+
+// parseProjectIncludes parses query parameters for project includes
+func (s *SetagayaAPI) parseProjectIncludes(qs url.Values) projectIncludeOptions {
+	options := projectIncludeOptions{}
+
+	includeCollectionsList := qs["include_collections"]
+	includePlansList := qs["include_plans"]
+
+	if len(includeCollectionsList) > 0 {
+		if includeCollections, err := strconv.ParseBool(includeCollectionsList[0]); err == nil {
+			options.includeCollections = includeCollections
+		}
+	}
+
+	if len(includePlansList) > 0 {
+		if includePlans, err := strconv.ParseBool(includePlansList[0]); err == nil {
+			options.includePlans = includePlans
+		}
+	}
+
+	return options
+}
+
+// getProjectsWithRBACFilter gets projects with RBAC-aware filtering when enabled
+func (s *SetagayaAPI) getProjectsWithRBACFilter(account *model.Account) ([]*model.Project, error) {
+	if s.enableRBAC && s.rbacIntegration != nil {
+		return s.getProjectsViaRBAC(account)
+	}
+
+	// Fallback to legacy method
+	return model.GetProjectsByOwners(account.ML)
+}
+
+// getProjectsViaRBAC attempts to get projects via RBAC with fallback
+func (s *SetagayaAPI) getProjectsViaRBAC(account *model.Account) ([]*model.Project, error) {
+	// Use RBAC-aware project filtering
+	result, rbacErr := s.rbacIntegration.GetProjectsByOwnersWithTenantFilter(account.ML, account)
+	if rbacErr != nil || result == nil {
+		// Fall back to legacy method if RBAC filtering fails
+		return model.GetProjectsByOwners(account.ML)
+	}
+
+	// Type assert the result
+	if projectList, ok := result.([]*model.Project); ok {
+		return projectList, nil
+	}
+
+	// Fallback if type assertion fails
+	return model.GetProjectsByOwners(account.ML)
+}
+
+// enhanceProjectsWithIncludes adds collections and/or plans to projects as requested
+func (s *SetagayaAPI) enhanceProjectsWithIncludes(projects []*model.Project, options projectIncludeOptions) {
 	for _, p := range projects {
-		if includeCollections {
+		if options.includeCollections {
 			if collections, err := p.GetCollections(); err == nil {
 				p.Collections = collections
 			}
 		}
-		if includePlans {
+		if options.includePlans {
 			if plans, err := p.GetPlans(); err == nil {
 				p.Plans = plans
 			}
 		}
 	}
-	s.jsonise(w, http.StatusOK, projects)
 }
 
 func (s *SetagayaAPI) projectGetHandler(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
