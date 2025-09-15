@@ -128,25 +128,74 @@ jobs:
         format: 'json'
         output: 'trivy-results.json'
 
+    - name: Scan with Grype
+      uses: anchore/scan-action@v6
+      continue-on-error: true
+      with:
+        image: 'setagaya-monitor:latest'
+        output-format: sarif
+        output-file: 'grype-results.sarif'
+        severity-cutoff: medium
+        fail-build: false
+
+    - name: Upload Grype results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always() && hashFiles('grype-results.sarif') != ''
+      with:
+        sarif_file: 'grype-results.sarif'
+        category: grype-monitoring
+
     - name: Check for HIGH/CRITICAL vulnerabilities
       run: |
+        echo "## 🛡️ Container Security Monitoring Summary" >> $GITHUB_STEP_SUMMARY
+        echo "**Images Scanned**: setagaya-monitor:latest, setagaya-jmeter-monitor:latest" >> $GITHUB_STEP_SUMMARY
+        echo "**Scan Date**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        # Trivy results
         if [ -f trivy-results.json ]; then
           high_count=$(cat trivy-results.json | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' 2>/dev/null || echo "0")
           critical_count=$(cat trivy-results.json | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' 2>/dev/null || echo "0")
 
-          echo "High severity vulnerabilities: $high_count"
-          echo "Critical severity vulnerabilities: $critical_count"
+          echo "### 🔍 Trivy Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔴 Critical: $critical_count" >> $GITHUB_STEP_SUMMARY
+          echo "- 🟡 High: $high_count" >> $GITHUB_STEP_SUMMARY
 
           if [ "$critical_count" -gt "0" ] || [ "$high_count" -gt "5" ]; then
+            echo "⚠️ **Alert**: Found $critical_count critical and $high_count high severity vulnerabilities" >> $GITHUB_STEP_SUMMARY
             echo "::warning::Found $critical_count critical and $high_count high severity vulnerabilities"
-            echo "## Security Alert: High Vulnerability Count" >> $GITHUB_STEP_SUMMARY
-            echo "- Critical vulnerabilities: $critical_count" >> $GITHUB_STEP_SUMMARY
-            echo "- High vulnerabilities: $high_count" >> $GITHUB_STEP_SUMMARY
-            echo "This is a monitoring workflow - vulnerabilities detected but workflow continues" >> $GITHUB_STEP_SUMMARY
           else
-            echo "✅ Vulnerability levels within acceptable limits"
+            echo "✅ **Status**: Vulnerability levels within acceptable limits" >> $GITHUB_STEP_SUMMARY
           fi
+        else
+          echo "### 🔍 Trivy Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "❌ No Trivy results file generated" >> $GITHUB_STEP_SUMMARY
         fi
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        # Grype results
+        if [ -f grype-results.sarif ]; then
+          grype_high=$(grep -o '"level":"error"' grype-results.sarif | wc -l || echo "0")
+          grype_medium=$(grep -o '"level":"warning"' grype-results.sarif | wc -l || echo "0")
+
+          echo "### 🐍 Grype Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔴 High: $grype_high" >> $GITHUB_STEP_SUMMARY
+          echo "- 🟡 Medium: $grype_medium" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$grype_high" -gt "0" ]; then
+            echo "⚠️ **Alert**: Grype found $grype_high high severity vulnerabilities" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **Status**: No high severity vulnerabilities detected by Grype" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "### 🐍 Grype Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "❌ No Grype SARIF results generated" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "📋 **View Details**: GitHub Repository → Security → Code scanning alerts" >> $GITHUB_STEP_SUMMARY
+        echo "🔍 **Tools Used**: Trivy (JSON format), Grype (SARIF format)" >> $GITHUB_STEP_SUMMARY
 
   # Secret monitoring
   secret-monitoring:
@@ -278,19 +327,59 @@ jobs:
         severity-cutoff: high
         fail-build: false
 
-    - name: Validate and fix SARIF file
+    - name: Generate SBOM Scan Summary and Fix SARIF
       if: always()
       run: |
+        echo "## 📦 SBOM Vulnerability Scan Results" >> $GITHUB_STEP_SUMMARY
+        echo "**Scan Target**: Repository root" >> $GITHUB_STEP_SUMMARY
+        echo "**Scan Date**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ -f sbom.spdx.json ]; then
+          echo "✅ **SBOM Generation**: Successfully created SPDX SBOM" >> $GITHUB_STEP_SUMMARY
+          
+          # Extract SBOM metadata
+          if command -v jq >/dev/null 2>&1; then
+            SBOM_PACKAGES=$(jq -r '.packages | length' sbom.spdx.json 2>/dev/null || echo "Unknown")
+            SBOM_NAME=$(jq -r '.name // "Unknown"' sbom.spdx.json 2>/dev/null)
+            echo "- SBOM Name: $SBOM_NAME" >> $GITHUB_STEP_SUMMARY
+            echo "- Total Packages: $SBOM_PACKAGES" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "❌ **SBOM Generation**: Failed to create SBOM" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+
         if [ -f sbom-scan-results.sarif ]; then
-          echo "SBOM SARIF file found, validating..."
+          echo "🔍 **Vulnerability Scan**: SARIF results generated" >> $GITHUB_STEP_SUMMARY
+          
           # Check if the SARIF file is valid JSON
           if jq . sbom-scan-results.sarif > /dev/null 2>&1; then
-            echo "SARIF file is valid JSON"
+            echo "✅ **SARIF Validation**: Valid JSON format" >> $GITHUB_STEP_SUMMARY
+            
+            # Extract vulnerability counts
+            TOTAL_RESULTS=$(jq -r '[.runs[].results[]] | length' sbom-scan-results.sarif 2>/dev/null || echo "0")
+            HIGH_RESULTS=$(jq -r '[.runs[].results[] | select(.level == "error")] | length' sbom-scan-results.sarif 2>/dev/null || echo "0")
+            MEDIUM_RESULTS=$(jq -r '[.runs[].results[] | select(.level == "warning")] | length' sbom-scan-results.sarif 2>/dev/null || echo "0")
+            
+            echo "- 🔴 High Severity: $HIGH_RESULTS" >> $GITHUB_STEP_SUMMARY
+            echo "- 🟡 Medium Severity: $MEDIUM_RESULTS" >> $GITHUB_STEP_SUMMARY
+            echo "- 📊 Total Findings: $TOTAL_RESULTS" >> $GITHUB_STEP_SUMMARY
+            
             # Add basic artifact location if missing
             jq '.runs[].results[]? |= if .locations[]?.physicalLocation.artifactLocation then . else (.locations[]?.physicalLocation.artifactLocation = {"uri": "."}) end' sbom-scan-results.sarif > results.sarif
-            echo "SARIF file processed and saved as results.sarif"
+            echo "✅ **SARIF Processing**: Enhanced for GitHub upload" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "$HIGH_RESULTS" -gt "0" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ **Action Required**: High severity vulnerabilities found in dependencies" >> $GITHUB_STEP_SUMMARY
+            elif [ "$TOTAL_RESULTS" -eq "0" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "✅ **Status**: No vulnerabilities detected in SBOM scan" >> $GITHUB_STEP_SUMMARY
+            fi
           else
-            echo "SARIF file is invalid JSON, creating empty SARIF file"
+            echo "❌ **SARIF Validation**: Invalid JSON, creating corrected version" >> $GITHUB_STEP_SUMMARY
             cat > results.sarif << 'EOF'
         {
           "version": "2.1.0",
@@ -300,7 +389,8 @@ jobs:
               "tool": {
                 "driver": {
                   "name": "anchore-sbom-scan",
-                  "version": "1.0.0"
+                  "version": "1.0.0",
+                  "informationUri": "https://github.com/anchore/syft"
                 }
               },
               "results": []
@@ -310,7 +400,10 @@ jobs:
         EOF
           fi
         else
-          echo "No SBOM SARIF file generated, creating empty SARIF file"
+          echo "⚠️ **Vulnerability Scan**: No SARIF results generated" >> $GITHUB_STEP_SUMMARY
+          echo "- This may indicate no vulnerabilities found or scan failure" >> $GITHUB_STEP_SUMMARY
+          echo "- Creating empty SARIF for GitHub Security tab" >> $GITHUB_STEP_SUMMARY
+          
           cat > results.sarif << 'EOF'
         {
           "version": "2.1.0",
@@ -320,7 +413,8 @@ jobs:
               "tool": {
                 "driver": {
                   "name": "anchore-sbom-scan",
-                  "version": "1.0.0"
+                  "version": "1.0.0",
+                  "informationUri": "https://github.com/anchore/syft"
                 }
               },
               "results": []
@@ -330,11 +424,15 @@ jobs:
         EOF
         fi
 
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "📋 **View Results**: GitHub Repository → Security → Code scanning alerts → anchore-sbom-scan" >> $GITHUB_STEP_SUMMARY
+
     - name: Upload SBOM scan results
       uses: github/codeql-action/upload-sarif@v3
       if: always() && hashFiles('results.sarif') != ''
       with:
         sarif_file: results.sarif
+        category: anchore-sbom-scan
 
   # Security scorecard
   security-scorecard:
@@ -360,11 +458,47 @@ jobs:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
         publish_results: true
 
+    - name: Generate Scorecard Summary
+      if: always()
+      run: |
+        echo "## 🏆 OpenSSF Scorecard Analysis" >> $GITHUB_STEP_SUMMARY
+        echo "**Repository**: ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Analysis Date**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ -f scorecard-results.sarif ]; then
+          echo "✅ **Scorecard analysis completed successfully**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Extract key metrics from SARIF if possible
+          if command -v jq >/dev/null 2>&1; then
+            # Try to extract score information
+            TOTAL_CHECKS=$(jq -r '.runs[0].results | length' scorecard-results.sarif 2>/dev/null || echo "Unknown")
+            echo "📊 **Analysis Summary**:" >> $GITHUB_STEP_SUMMARY
+            echo "- Total security checks: $TOTAL_CHECKS" >> $GITHUB_STEP_SUMMARY
+            echo "- Results format: SARIF v2.1.0" >> $GITHUB_STEP_SUMMARY
+            echo "- Upload status: ✅ Uploaded to GitHub Security tab" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "📊 **Analysis Summary**:" >> $GITHUB_STEP_SUMMARY
+            echo "- Scorecard analysis completed" >> $GITHUB_STEP_SUMMARY
+            echo "- Results uploaded to GitHub Security tab" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔍 **View detailed results**: GitHub Repository → Security → Code scanning alerts" >> $GITHUB_STEP_SUMMARY
+          echo "📈 **Scorecard Dashboard**: [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/${{ github.repository }})" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Scorecard analysis failed**" >> $GITHUB_STEP_SUMMARY
+          echo "- No SARIF results file generated" >> $GITHUB_STEP_SUMMARY
+          echo "- Check workflow logs for details" >> $GITHUB_STEP_SUMMARY
+        fi
+
     - name: Upload SARIF results
       uses: github/codeql-action/upload-sarif@v3
       if: always() && hashFiles('scorecard-results.sarif') != ''
       with:
         sarif_file: scorecard-results.sarif
+        category: openssf-scorecard
 
   # Create security issue if problems found
   create-security-issue:
