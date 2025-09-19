@@ -12,103 +12,85 @@ This directory contains comprehensive documentation for the Setagaya Load Testin
 ### **API Documentation**
 - **[OpenAPI Specification](api/openapi.yaml)** - REST API documentation (OpenAPI 3.0)
 
-### **Platform Documentation** (Root Level)
-- **[Technical Specifications](../TECHNICAL_SPECS.md)** - Comprehensive technical documentation
-- **[Security Policy](../SECURITY.md)** - Security measures and vulnerability disclosure
-- **[JMeter Build Options](../setagaya/JMETER_BUILD_OPTIONS.md)** - JMeter version compatibility guide
-- **[Development Guidelines](../.github/instructions/copilot.instructions.md)** - AI coding guidelines and patterns
-- **[Security Checklist](../.github/SECURITY_CHECKLIST.md)** - Release security validation
+# Setagaya Documentation Index
 
-## 🗺️ Documentation Roadmap
+This file is the canonical index for repository documentation. It is maintained as part of Phase 1 (audit & canonical index) of the documentation reorganization.
 
-### **Current Focus (v2.0.0-rc.1)**
-- ✅ Complete technical specifications
-- ✅ Security automation documentation
-- ✅ API documentation improvements
-- ✅ Development workflow documentation
+## Quick links
 
-### **Next Phase (v3.0.0)**
-- 🎯 **RBAC Documentation Suite** (completed)
-  - Executive summary for stakeholders
-  - Comprehensive development plan
-  - Technical implementation specifications
-- 📋 **User Documentation**
-  - Administrator guides
-  - End-user tutorials
-  - API client examples
-- 🔐 **Security Documentation**
-  - Identity management guides
-  - Compliance procedures
-  - Audit trail documentation
+- Root README: [../README.md](../README.md)
+- Technical Specifications: [../TECHNICAL_SPECS.md](../TECHNICAL_SPECS.md)
+- API (OpenAPI): [api/openapi.yaml](api/openapi.yaml)
+- Security: [../SECURITY.md](../SECURITY.md)
+- Development guidelines (AI & coding): [../.github/instructions/copilot.instructions.md](../.github/instructions/copilot.instructions.md)
 
-### **Future Enhancements**
-- **Interactive Documentation**: API playground and tutorials
-- **Video Guides**: Setup and configuration walkthroughs
-- **Best Practices**: Load testing methodology and patterns
-- **Troubleshooting**: Common issues and solutions
+## Documentation Inventory (Phase 1 audit)
 
-## 📖 How to Use This Documentation
+Below is a concise inventory of key documentation files and suggested category/status for Phase 1. This is not exhaustive — use it as the canonical starting point for the reorganization.
 
-### **For Developers**
-1. Start with [Technical Specifications](../TECHNICAL_SPECS.md) for architecture overview
-2. Review [Development Guidelines](../.github/instructions/copilot.instructions.md) for coding standards
-3. Use [API Documentation](api/openapi.yaml) for integration details
-4. Follow [RBAC Technical Specification](RBAC_TECHNICAL_SPECIFICATION.md) for v3.0 development
+| File / Path | Suggested Category | Current status | Owner |
+|---|---:|---|---|
+| `RBAC_EXECUTIVE_SUMMARY.md` | guides / executive | stable | @team-rbac |
+| `RBAC_DEVELOPMENT_PLAN.md` | planning | reviewed | @team-rbac |
+| `RBAC_TECHNICAL_SPECIFICATION.md` | reference / design | draft | @team-rbac |
+| `api/openapi.yaml` | api / reference | stable | @api-team |
+| `TECHNICAL_SPECS.md` | reference / architecture | stable | @arch-team |
+| `SECURITY.md` | security | stable | @security |
+| `setagaya/JMETER_BUILD_OPTIONS.md` | guides / ops | reviewed | @engines-team |
+| `.github/instructions/copilot.instructions.md` | contrib / developer-guides | stable | @dev-rel |
+| `.github/SECURITY_CHECKLIST.md` | security / checklist | stable | @security |
+| `docs/SUMMARY.md` | guides / book | draft | @doc-maintainers |
+| `docs/src/introduction.md` | guides / intro | draft | @doc-maintainers |
+| `DOCUMENATION.md` | reference / misc | draft | @doc-maintainers |
+| `README.md` (repo root) | entry | stable | @maintainers |
+| `CHANGELOG.md` | release | stable | @release |
+| `wordlist.dic`, `cspell.json` | appendix / tools | stable | @doc-maintainers |
+| `kubernetes/` (manifests) | ops / deployment | reviewed | @ops |
+| `grafana/` (dashboards) | ops / monitoring | reviewed | @ops |
 
-### **For Project Managers**
-1. Read [RBAC Executive Summary](RBAC_EXECUTIVE_SUMMARY.md) for initiative overview
-2. Review [RBAC Development Plan](RBAC_DEVELOPMENT_PLAN.md) for timeline and milestones
-3. Use [Security Policy](../SECURITY.md) for compliance understanding
-4. Reference [Security Checklist](../.github/SECURITY_CHECKLIST.md) for release validation
+Notes:
+- Status values: draft (needs work), reviewed (peer-reviewed), stable (production-ready).
+- Owner values are placeholders — replace with actual GitHub usernames or team handles when available.
 
-### **For System Administrators**
-1. Start with [Technical Specifications](../TECHNICAL_SPECS.md) for deployment details
-2. Review [JMeter Build Options](../setagaya/JMETER_BUILD_OPTIONS.md) for engine setup
-3. Use [Security Policy](../SECURITY.md) for security configuration
-4. Follow [Development Guidelines](../.github/instructions/copilot.instructions.md) for maintenance
+## Phase 1 tasks completed (this update)
 
-### **For Enterprise Customers**
-1. Review [RBAC Executive Summary](RBAC_EXECUTIVE_SUMMARY.md) for enterprise features
-2. Understand [Security Policy](../SECURITY.md) for compliance requirements
-3. Use [API Documentation](api/openapi.yaml) for integration planning
-4. Reference [RBAC Development Plan](RBAC_DEVELOPMENT_PLAN.md) for roadmap details
+- Inventory created and included above
+- Canonical index updated (this file)
+- Suggested categories/status assigned to top-level docs
 
-## 🔄 Documentation Maintenance
+## Immediate next steps (Phase 1 finishing tasks)
 
-### **Update Process**
-- Documentation is automatically validated via GitHub Actions
-- Spell checking and link validation on every commit
-- Technical accuracy reviews during feature development
-- Regular updates to reflect current architecture
+1. Add minimal front-matter to high-priority docs (title/description/kind/status/owner). See docs/templates for examples (will be created in Phase 3).
+2. Run link and spell checks locally and fix broken links.
+3. Add `docs/_redirects` or a simple migration map to avoid breaking external links while moving files.
+4. Create per-category index pages: `docs/guides/README.md`, `docs/reference/README.md`, `docs/api/README.md`, `docs/ops/README.md`.
 
-### **Contributing**
-- Follow the documentation standards in [Development Guidelines](../.github/instructions/copilot.instructions.md)
-- Update relevant documentation for any code changes
-- Ensure OpenAPI specification stays current with API changes
-- Add new technical terms to the spell check wordlist
+## Local checks (quick commands)
 
-### **Feedback**
-- Documentation issues can be reported via GitHub Issues
-- Improvement suggestions welcome via Pull Requests
-- Regular documentation reviews with stakeholder feedback
-- User experience improvements based on support queries
+Run these locally before opening migration PRs to catch obvious problems (adapt to your environment):
+
+```bash
+# lint and format markdown (project has npm scripts)
+npm run lint:md
+npm run format
+
+# lint YAML manifests
+yamllint kubernetes/ || true
+
+# spellcheck (cspell)
+npm run lint:spell || npx cspell '**/*.md' --config cspell.json
+
+# validate OpenAPI (if you have openapi-cli installed)
+# npx @redocly/openapi-cli validate api/openapi.yaml || true
+```
+
+## Migration safety notes
+
+- Update `.github/wordlist.txt` before introducing new domain-specific terms (repo policy requires this).
+- Do not move `api/openapi.yaml` without first ensuring CI OpenAPI validation will run on the new path.
+- When moving files, prefer incremental PRs (20-30 files per PR) and use link-check CI to catch regressions.
 
 ---
 
-## 📚 Legacy Documentation Build
-
-### **mdBook Setup** (for book-style documentation)
-If you want to build the legacy mdBook documentation:
-
-1. Install [mdBook](https://github.com/rust-lang/mdBook)
-2. `cd docs && mdbook build`
-3. `mdbook serve` for local development
-4. `mdbook watch` for automatic rebuilds
-
-### **GitHub Pages**
-The documentation is automatically published to GitHub Pages via GitHub Actions. See [GitHub Pages Configuration](https://github.com/peaceiris/actions-mdbook) for setup details.
-
----
-
-**Last Updated**: September 11, 2025
-**Next Review**: Monthly during active development
+**Last Updated**: 2025-09-19
+**Phase**: Phase 1 — audit & canonical index (in this branch)

@@ -1,0 +1,51 @@
+name: docs-check
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '*.md'
+      - 'kubernetes/**'
+      - 'docs/api/**'
+      - '.github/**'
+
+jobs:
+  lint-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install deps
+        run: |
+          npm ci || npm install
+
+      - name: Run markdownlint
+        run: |
+          npx markdownlint 'docs/**/*.md' || true
+
+      - name: Run cspell
+        run: |
+          npx cspell 'docs/**/*.md' || true
+
+      - name: Run link-check
+        run: |
+          npx markdown-link-check -c .markdown-link-check.json 'docs/**/*.md' || true
+
+      - name: Lint Kubernetes YAMLs
+        if: github.event.pull_request.changed_files != 0
+        run: |
+          yamllint -c .yamllint.yml kubernetes || true
+
+      - name: Validate OpenAPI (if changed)
+        if: contains(github.event.pull_request.changed_files, 'api/openapi.yaml') || contains(github.event.pull_request.changed_files, 'docs/api/openapi.yaml')
+        run: |
+          npx @redocly/openapi-cli validate api/openapi.yaml || npx @redocly/openapi-cli validate docs/api/openapi.yaml || true
+
+      - name: Summary
+        run: echo 'Docs checks completed (warnings shown as non-fatal). Update workflow to enforce failures after initial stabilization.'
