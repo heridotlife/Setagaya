@@ -129,7 +129,7 @@ jobs:
         output: 'trivy-results.json'
 
     - name: Scan with Grype
-      uses: anchore/scan-action@v6
+      uses: anchore/scan-action@v7
       continue-on-error: true
       with:
         image: 'setagaya-monitor:latest'
@@ -318,7 +318,7 @@ jobs:
         output-file: sbom.spdx.json
 
     - name: Scan SBOM for vulnerabilities
-      uses: anchore/scan-action@v6
+      uses: anchore/scan-action@v7
       continue-on-error: true
       with:
         sbom: sbom.spdx.json

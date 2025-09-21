@@ -386,7 +386,7 @@ jobs:
         category: 'docker-${{ matrix.name }}'
 
     - name: Run Grype vulnerability scanner - ${{ matrix.name }}
-      uses: anchore/scan-action@v6
+      uses: anchore/scan-action@v7
       continue-on-error: true
       with:
         image: '${{ matrix.name }}:security-test'
