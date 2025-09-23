@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.7
 
 require (
-	cloud.google.com/go/storage v1.56.1
+	cloud.google.com/go/storage v1.57.0
 	github.com/beevik/etree v1.6.0
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/golang-jwt/jwt/v5 v5.3.0
@@ -104,7 +104,7 @@ require (
 	google.golang.org/genproto v0.0.0-20250603155806-513f23925822 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250818200422-3122310a409c // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250818200422-3122310a409c // indirect
-	google.golang.org/grpc v1.74.2 // indirect
+	google.golang.org/grpc v1.74.3 // indirect
 	google.golang.org/protobuf v1.36.7 // indirect
 	gopkg.in/asn1-ber.v1 v1.0.0-20181015200546-f715ec2f112d // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
