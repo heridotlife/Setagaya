@@ -27,7 +27,7 @@ RUN wget --progress=bar:force:noscroll \
     rm apache-jmeter-${JMETER_VERSION}.tgz
 
 # Runtime stage
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 
 # Install security updates and create non-root user
 RUN apk update && apk upgrade && \
