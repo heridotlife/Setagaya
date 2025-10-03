@@ -13,7 +13,6 @@
 [![Code Quality](https://github.com/hveda/Setagaya/actions/workflows/code-quality.yml/badge.svg)](https://github.com/hveda/Setagaya/actions/workflows/code-quality.yml)
 [![PR Validation](https://github.com/hveda/Setagaya/actions/workflows/pr-validation.yml/badge.svg)](https://github.com/hveda/Setagaya/actions/workflows/pr-validation.yml)
 [![Security Monitoring](https://github.com/hveda/Setagaya/actions/workflows/security-monitoring.yml/badge.svg)](https://github.com/hveda/Setagaya/actions/workflows/security-monitoring.yml)
-[![Documentation](https://github.com/hveda/Setagaya/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/hveda/Setagaya/actions/workflows/gh-pages.yml)
 [![Build & Release](https://github.com/hveda/Setagaya/actions/workflows/build-publish.yml/badge.svg)](https://github.com/hveda/Setagaya/actions/workflows/build-publish.yml)
 
 Setagaya is a cloud-native, distributed load testing platform that orchestrates Apache JMeter engines across Kubernetes
@@ -36,12 +35,15 @@ testing at scale.
 
 ## 📚 Documentation
 
+- **[Documentation Index](docs/README.md)** - Complete documentation guide and navigation
 - **[Technical Specifications](TECHNICAL_SPECS.md)** - Comprehensive technical documentation
+- **[Best Practices](docs/BEST_PRACTICES.md)** - CodeQL, Docker security, and workflow optimization
 - **[API Documentation](docs/api/openapi.yaml)** - OpenAPI 3.0 REST API specification
 - **[Security Policy](SECURITY.md)** - Security measures and vulnerability disclosure
 - **[JMeter Build Options](setagaya/JMETER_BUILD_OPTIONS.md)** - JMeter version compatibility guide
 - **[Development Guidelines](.github/instructions/copilot.instructions.md)** - AI coding guidelines and patterns
 - **[Security Checklist](.github/SECURITY_CHECKLIST.md)** - Release security validation
+- **[Changelog](CHANGELOG.md)** - Version history and release notes
 
 ## 🏗️ Architecture
 
