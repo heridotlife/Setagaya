@@ -1,11 +1,11 @@
 # Build stage for JMeter download
-FROM alpine:3.22@sha256:beefdbd8a1da6d2915566fde36db9db0b524eb737fc57cd1367effd16dc0d06d AS jmeter-builder
+FROM alpine:3.23@sha256:51183f2cfa6320055da30872f211093f9ff1d3cf06f39a0bdb212314c5dc7375 AS jmeter-builder
 ARG jmeter_ver=5.6.3
 ENV JMETER_VERSION=$jmeter_ver
 ARG USE_PREBUILT=false
 
 # Build stage for Go application (default approach)
-FROM golang:1.25.1-alpine3.22@sha256:b6ed3fd0452c0e9bcdef5597f29cc1418f61672e9d3a2f55bf02e7222c014abd AS go-builder
+FROM golang:1.25.5-alpine3.22@sha256:3587db7cc96576822c606d119729370dbf581931c5f43ac6d3fa03ab4ed85a10 AS go-builder
 
 # Install required packages and create directory
 RUN apk update && apk upgrade && \
@@ -31,7 +31,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -o setagaya-agent ./engines/jmeter/setagaya-agent.go
 
 # Build stage for JMeter download
-FROM alpine:3.22@sha256:beefdbd8a1da6d2915566fde36db9db0b524eb737fc57cd1367effd16dc0d06d AS jmeter-downloader
+FROM alpine:3.23@sha256:51183f2cfa6320055da30872f211093f9ff1d3cf06f39a0bdb212314c5dc7375 AS jmeter-downloader
 ARG jmeter_ver=5.6.3
 ENV JMETER_VERSION=$jmeter_ver
 
@@ -46,7 +46,7 @@ RUN wget --progress=bar:force:noscroll \
     rm apache-jmeter-${JMETER_VERSION}.tgz
 
 # Runtime stage
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 
 # Build arguments
 ARG USE_PREBUILT=false
