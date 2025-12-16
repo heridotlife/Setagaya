@@ -270,35 +270,35 @@ jobs:
         no-fail: true
 
     - name: Upload Hadolint API results
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('hadolint-api.sarif') != ''
       with:
         sarif_file: hadolint-api.sarif
         category: hadolint-api
 
     - name: Upload Hadolint JMeter results
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('hadolint-jmeter.sarif') != ''
       with:
         sarif_file: hadolint-jmeter.sarif
         category: hadolint-jmeter
 
     - name: Upload Hadolint Controller results
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('hadolint-controller.sarif') != ''
       with:
         sarif_file: hadolint-controller.sarif
         category: hadolint-controller
 
     - name: Upload Hadolint Storage results
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('hadolint-storage.sarif') != ''
       with:
         sarif_file: hadolint-storage.sarif
         category: hadolint-storage
 
     - name: Upload Hadolint Grafana results
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('hadolint-grafana.sarif') != ''
       with:
         sarif_file: hadolint-grafana.sarif

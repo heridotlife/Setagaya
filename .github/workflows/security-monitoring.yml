@@ -139,7 +139,7 @@ jobs:
         fail-build: false
 
     - name: Upload Grype results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('grype-results.sarif') != ''
       with:
         sarif_file: 'grype-results.sarif'
@@ -428,7 +428,7 @@ jobs:
         echo "📋 **View Results**: GitHub Repository → Security → Code scanning alerts → anchore-sbom-scan" >> $GITHUB_STEP_SUMMARY
 
     - name: Upload SBOM scan results
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('results.sarif') != ''
       with:
         sarif_file: results.sarif
@@ -494,7 +494,7 @@ jobs:
         fi
 
     - name: Upload SARIF results
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('scorecard-results.sarif') != ''
       with:
         sarif_file: scorecard-results.sarif

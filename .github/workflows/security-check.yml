@@ -81,7 +81,7 @@ jobs:
 
     - name: Upload SARIF file
       if: always()
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: gosec-results.sarif
         category: gosec
@@ -208,7 +208,7 @@ jobs:
           ${{ runner.os }}-go-build-
 
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
+      uses: github/codeql-action/init@v4
       with:
         languages: ${{ matrix.language }}
         queries: security-extended,security-and-quality
@@ -235,7 +235,7 @@ jobs:
     # Test files are analyzed directly from source by CodeQL - no need to compile them
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
+      uses: github/codeql-action/analyze@v4
       with:
         category: "/language:${{matrix.language}}"
 
@@ -379,7 +379,7 @@ jobs:
         ignore-unfixed: true  # Skip vulnerabilities without fixes
 
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('trivy-${{ matrix.name }}.sarif') != ''
       with:
         sarif_file: 'trivy-${{ matrix.name }}.sarif'
@@ -396,7 +396,7 @@ jobs:
         fail-build: false
 
     - name: Upload Grype scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('grype-${{ matrix.name }}.sarif') != ''
       with:
         sarif_file: 'grype-${{ matrix.name }}.sarif'
