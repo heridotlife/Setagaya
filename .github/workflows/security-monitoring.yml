@@ -36,7 +36,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25.1'
+        go-version: '1.25.5'
         cache: true
         cache-dependency-path: setagaya/go.sum
 
@@ -129,7 +129,7 @@ jobs:
         output: 'trivy-results.json'
 
     - name: Scan with Grype
-      uses: anchore/scan-action@v6
+      uses: anchore/scan-action@v7
       continue-on-error: true
       with:
         image: 'setagaya-monitor:latest'
@@ -139,7 +139,7 @@ jobs:
         fail-build: false
 
     - name: Upload Grype results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('grype-results.sarif') != ''
       with:
         sarif_file: 'grype-results.sarif'
@@ -209,7 +209,7 @@ jobs:
         fetch-depth: 0
 
     - name: Run comprehensive secret scan
-      uses: trufflesecurity/trufflehog@v3.90.6
+      uses: trufflesecurity/trufflehog@v3.90.11
       with:
         path: ./
         extra_args: --only-verified --json --fail
@@ -273,7 +273,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25.1'
+        go-version: '1.25.5'
         cache: true
         cache-dependency-path: setagaya/go.sum
 
@@ -318,7 +318,7 @@ jobs:
         output-file: sbom.spdx.json
 
     - name: Scan SBOM for vulnerabilities
-      uses: anchore/scan-action@v6
+      uses: anchore/scan-action@v7
       continue-on-error: true
       with:
         sbom: sbom.spdx.json
@@ -428,7 +428,7 @@ jobs:
         echo "📋 **View Results**: GitHub Repository → Security → Code scanning alerts → anchore-sbom-scan" >> $GITHUB_STEP_SUMMARY
 
     - name: Upload SBOM scan results
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('results.sarif') != ''
       with:
         sarif_file: results.sarif
@@ -451,7 +451,7 @@ jobs:
         persist-credentials: false
 
     - name: Run analysis
-      uses: ossf/scorecard-action@v2.4.0
+      uses: ossf/scorecard-action@v2.4.3
       with:
         results_file: scorecard-results.sarif
         results_format: sarif
@@ -494,7 +494,7 @@ jobs:
         fi
 
     - name: Upload SARIF results
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('scorecard-results.sarif') != ''
       with:
         sarif_file: scorecard-results.sarif
