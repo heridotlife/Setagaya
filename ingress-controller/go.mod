@@ -5,8 +5,8 @@ go 1.25.1
 require (
 	github.com/sirupsen/logrus v1.9.3
 	go.uber.org/automaxprocs v1.6.0
-	k8s.io/api v0.34.2
-	k8s.io/apimachinery v0.34.2
+	k8s.io/api v0.34.3
+	k8s.io/apimachinery v0.34.3
 	k8s.io/client-go v0.34.1
 )
 
