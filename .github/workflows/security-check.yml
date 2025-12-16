@@ -36,6 +36,7 @@ permissions:
   contents: read
   security-events: write
   actions: read
+  pull-requests: write
 
 jobs:
   # Go security scanning (with shared cache)
