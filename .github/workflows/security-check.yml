@@ -50,7 +50,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25.1'
+        go-version: '1.25.5'
         cache: true
         cache-dependency-path: setagaya/go.sum
 
@@ -116,7 +116,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25.1'
+        go-version: '1.25.5'
         cache: true
         cache-dependency-path: setagaya/go.sum
 
@@ -173,7 +173,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25.1'
+        go-version: '1.25.5'
         cache: true
         cache-dependency-path: setagaya/go.sum
 
@@ -296,7 +296,7 @@ jobs:
       if: contains(matrix.name, 'setagaya-api') || contains(matrix.name, 'setagaya-jmeter') || contains(matrix.name, 'setagaya-storage') || contains(matrix.name, 'setagaya-ingress')
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25.1'
+        go-version: '1.25.5'
         cache: true
         cache-dependency-path: setagaya/go.sum
 
@@ -509,7 +509,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25.1'
+        go-version: '1.25.5'
         cache: true
         cache-dependency-path: setagaya/go.sum
 

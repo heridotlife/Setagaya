@@ -126,7 +126,7 @@ jobs:
       if: steps.changes.outputs.go == 'true'
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25.1'
+        go-version: '1.25.5'
 
     - name: Check Go code formatting
       if: steps.changes.outputs.go == 'true'
@@ -282,7 +282,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25.1'
+        go-version: '1.25.5'
 
     - name: Setup test database
       run: |
@@ -331,7 +331,7 @@ jobs:
       if: steps.deps.outputs.go_deps == 'true'
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25.1'
+        go-version: '1.25.5'
 
     - name: Check for new dependencies
       if: steps.deps.outputs.go_deps == 'true'
