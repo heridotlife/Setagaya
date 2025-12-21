@@ -194,7 +194,7 @@ jobs:
 
     # Separate Go module caching (more stable)
     - name: Cache Go modules
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/go/pkg/mod
         key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
@@ -203,7 +203,7 @@ jobs:
 
     # Separate Go build cache (rebuild each time for CodeQL compatibility)
     - name: Cache Go build
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.cache/go-build
         key: ${{ runner.os }}-go-build-${{ github.sha }}
@@ -305,7 +305,7 @@ jobs:
 
     # Image-specific caching strategy
     - name: Cache Docker layers for ${{ matrix.name }}
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: /tmp/.buildx-cache-${{ matrix.name }}
         key: ${{ runner.os }}-buildx-${{ matrix.name }}-${{ hashFiles(matrix.dockerfile, '**/go.mod', '**/go.sum') }}-${{ github.sha }}
@@ -315,7 +315,7 @@ jobs:
 
     - name: Cache JMeter download
       if: contains(matrix.name, 'jmeter')
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: /tmp/jmeter-cache
         key: jmeter-5.6.3
