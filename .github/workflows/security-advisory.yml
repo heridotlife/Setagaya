@@ -33,7 +33,7 @@ jobs:
     if: github.event_name == 'issues' && (contains(github.event.issue.labels.*.name, 'security') || contains(github.event.issue.title, 'security') || contains(github.event.issue.title, 'vulnerability'))
     steps:
     - name: Checkout Source
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - name: Process Security Issue
       uses: actions/github-script@v8
@@ -85,7 +85,7 @@ jobs:
     if: github.event_name == 'schedule' || github.event.inputs.action == 'notify'
     steps:
     - name: Checkout Source
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - name: Check for relevant advisories
       uses: actions/github-script@v8
@@ -152,7 +152,7 @@ jobs:
     if: github.event.inputs.action == 'validate' || github.event_name == 'schedule'
     steps:
     - name: Checkout Source
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - name: Set up Go
       uses: actions/setup-go@v6
@@ -225,7 +225,7 @@ jobs:
     if: github.event.inputs.action == 'update-docs'
     steps:
     - name: Checkout Source
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - name: Update security documentation
       run: |
@@ -328,7 +328,7 @@ jobs:
     if: github.event.inputs.action == 'validate' || github.event_name == 'schedule'
     steps:
     - name: Checkout Source
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - name: Collect security metrics
       run: |
